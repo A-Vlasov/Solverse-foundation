@@ -23,7 +23,7 @@ export default function Header() {
       <header className="bg-[#1a1a1a] border-b border-[#3d3d3d] p-4">
         <div className="container mx-auto flex items-center justify-between">
           <button 
-            onClick={() => navigate(-1)}
+            onClick={() => navigate('/admin')}
             className="p-2 rounded-lg hover:bg-[#3d3d3d] transition-colors flex items-center gap-2 text-gray-300"
           >
             <ChevronLeft className="w-5 h-5" />

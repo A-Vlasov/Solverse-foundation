@@ -143,21 +143,15 @@ function TestResults() {
     <div className="min-h-screen bg-[#1a1a1a] text-gray-100 p-6">
       <div className="max-w-4xl mx-auto">
       <div className="flex items-center gap-4 mb-8">
-        <button
-            onClick={handleBackClick}
-          className="p-2 rounded-lg bg-[#2d2d2d] hover:bg-[#3d3d3d] transition-colors"
-        >
-          <ArrowLeft className="w-5 h-5" />
-        </button>
-          <div>
-            <h1 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-purple-500">
-              Результаты тестирования
-            </h1>
-            <p className="text-gray-400 mt-1">
-              Соискатель: {employeeName}
-            </p>
-          </div>
+        <div>
+          <h1 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-purple-500">
+            Результаты тестирования
+          </h1>
+          <p className="text-gray-400 mt-1">
+            Соискатель: {employeeName}
+          </p>
         </div>
+      </div>
         
         {analysis ? (
           <div className="space-y-6">

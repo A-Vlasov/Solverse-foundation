@@ -654,14 +654,8 @@ function TestResultsAdmin() {
 
   return (
     <div className="min-h-screen bg-[#1a1a1a] text-gray-100 p-6">
-      {/* Header */}
+      {/* Header - убираем дублирующуюся кнопку назад */}
       <div className="flex items-center gap-4 mb-8">
-        <button
-          onClick={() => navigate('/admin')}
-          className="p-2 rounded-lg bg-[#2d2d2d] hover:bg-[#3d3d3d] transition-colors"
-        >
-          <ArrowLeft className="w-5 h-5" />
-        </button>
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
