@@ -65,7 +65,7 @@ function TestResults() {
         setLoading(false);
       }
     };
-    
+
     fetchData();
   }, [sessionId]);
   
@@ -152,7 +152,7 @@ function TestResults() {
           </p>
         </div>
       </div>
-        
+
         {analysis ? (
           <div className="space-y-6">
             {/* Общий результат */}
@@ -224,12 +224,12 @@ function TestResults() {
                     </span>
               </div>
                   <p className="text-gray-400 text-sm">{analysis.metrics.charm_and_tone.verdict}</p>
-                </div>
-                
+            </div>
+
                 {/* Креативность */}
                 <div className="bg-[#1a1a1a] rounded-lg p-4">
                   <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2">
                       <Lightbulb className="w-5 h-5 text-pink-500" />
                       <h3 className="font-semibold">Креативность</h3>
                 </div>
@@ -279,7 +279,7 @@ function TestResults() {
                       <span className={`font-bold ${getScoreColor(analysis.metrics.pricing_policy.score)}`}>
                         {analysis.metrics.pricing_policy.score}/5
                       </span>
-                    </div>
+              </div>
                     <p className="text-gray-400 text-sm">{analysis.metrics.pricing_policy.verdict}</p>
                     
                     {/* Отображение сильных сторон и областей улучшения, если они есть */}
@@ -295,9 +295,9 @@ function TestResults() {
                             <ul className="text-gray-400 text-sm ml-6 space-y-1 list-disc">
                               {analysis.metrics.pricing_policy.strengths.map((strength, idx) => (
                                 <li key={idx}>{strength}</li>
-                              ))}
-                            </ul>
-                          </div>
+                    ))}
+                  </ul>
+                </div>
                         )}
                         
                         {analysis.metrics.pricing_policy.improvements && analysis.metrics.pricing_policy.improvements.length > 0 && (
@@ -309,8 +309,8 @@ function TestResults() {
                             <ul className="text-gray-400 text-sm ml-6 space-y-1 list-disc">
                               {analysis.metrics.pricing_policy.improvements.map((improvement, idx) => (
                                 <li key={idx}>{improvement}</li>
-                              ))}
-                            </ul>
+                      ))}
+                    </ul>
                           </div>
                         )}
                       </div>
@@ -350,7 +350,7 @@ function TestResults() {
                 <div className="flex justify-between">
                   <span className="text-gray-400">ID сессии:</span>
                   <span className="text-gray-300">{testResult?.test_session_id || 'Недоступно'}</span>
-                </div>
+            </div>
                 
                 <div className="flex justify-between">
                   <span className="text-gray-400">Дата проведения:</span>
@@ -360,9 +360,9 @@ function TestResults() {
                       : 'Недоступно'
                     }
                   </span>
-                </div>
-              </div>
-            </div>
+                      </div>
+                    </div>
+                  </div>
 
             <button
               onClick={handleBackClick}
@@ -371,8 +371,8 @@ function TestResults() {
               <ArrowLeft className="w-5 h-5" />
               Вернуться на главную
             </button>
-          </div>
-        )}
+            </div>
+          )}
       </div>
     </div>
   );

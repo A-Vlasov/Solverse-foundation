@@ -493,19 +493,19 @@ function TestResultsAdmin() {
   const loadChatHistory = async (employeeId: string) => {
     try {
       console.log('Loading employee test sessions for:', employeeId);
-      // Получаем все тестовые сессии сотрудника
-      const employeeSessions = await getEmployeeTestSessions(employeeId);
+          // Получаем все тестовые сессии сотрудника
+          const employeeSessions = await getEmployeeTestSessions(employeeId);
       console.log('Employee sessions found:', employeeSessions.length);
-      
-      if (employeeSessions.length > 0) {
-        // Берем последнюю сессию
-        const latestSession = employeeSessions[0];
+          
+          if (employeeSessions.length > 0) {
+            // Берем последнюю сессию
+            const latestSession = employeeSessions[0];
         console.log('Using latest session:', latestSession.id);
-        
-        // Загружаем историю чатов для этой сессии
-        const chatHistory = await getChatHistory(latestSession.id);
+            
+            // Загружаем историю чатов для этой сессии
+            const chatHistory = await getChatHistory(latestSession.id);
         console.log('Chats loaded for session:', chatHistory.length);
-        setChats(chatHistory);
+            setChats(chatHistory);
 
         // Загружаем результаты анализа для сессии
         const result = await getTestResultForSession(latestSession.id);
@@ -598,38 +598,38 @@ function TestResultsAdmin() {
           }));
         }
 
-        // Массив имен персонажей
-        const characterNames = ['Marcus', 'Shrek', 'Olivia', 'Ava'];
+            // Массив имен персонажей
+            const characterNames = ['Marcus', 'Shrek', 'Olivia', 'Ava'];
 
-        // Преобразуем чаты в формат диалогов для отображения
-        const newDialogues = chatHistory.map((chat, index) => ({
-          id: chat.id,
-          title: `Диалог с ${characterNames[chat.chat_number - 1] || 'Unknown'}`,
-          date: new Date(chat.created_at).toLocaleDateString(),
-          duration: '15 минут',
-          score: 85,
-          messages: chat.messages.map((msg, msgIndex) => ({
-            ...msg,
-            id: `msg-${msgIndex}`,
-            time: new Date(latestSession.created_at).toLocaleTimeString('ru-RU', {
-              hour: '2-digit',
-              minute: '2-digit'
+            // Преобразуем чаты в формат диалогов для отображения
+            const newDialogues = chatHistory.map((chat, index) => ({
+              id: chat.id,
+              title: `Диалог с ${characterNames[chat.chat_number - 1] || 'Unknown'}`,
+              date: new Date(chat.created_at).toLocaleDateString(),
+              duration: '15 минут',
+              score: 85,
+              messages: chat.messages.map((msg, msgIndex) => ({
+                ...msg,
+                id: `msg-${msgIndex}`,
+                time: new Date(latestSession.created_at).toLocaleTimeString('ru-RU', {
+                  hour: '2-digit',
+                  minute: '2-digit'
             }),
             // Добавим role на основе isOwn для совместимости с обновлённым интерфейсом
             role: msg.isOwn ? 'user' : 'assistant'
-          }))
-        }));
+              }))
+            }));
 
-        // Сортируем диалоги по номеру чата
-        newDialogues.sort((a, b) => {
-          const aNumber = characterNames.indexOf(a.title.split(' с ')[1]);
-          const bNumber = characterNames.indexOf(b.title.split(' с ')[1]);
-          return aNumber - bNumber;
-        });
+            // Сортируем диалоги по номеру чата
+            newDialogues.sort((a, b) => {
+              const aNumber = characterNames.indexOf(a.title.split(' с ')[1]);
+              const bNumber = characterNames.indexOf(b.title.split(' с ')[1]);
+              return aNumber - bNumber;
+            });
 
-        setDialogues(newDialogues);
-        
-        // Обновляем информацию о сотруднике и дате тестирования
+            setDialogues(newDialogues);
+            
+            // Обновляем информацию о сотруднике и дате тестирования
         // Безопасно извлекаем имя и фамилию сотрудника
         const firstName = latestSession?.employee?.first_name || '';
         const lastName = latestSession?.employee?.last_name || '';
@@ -643,11 +643,11 @@ function TestResultsAdmin() {
             ? `${Math.round((new Date(latestSession.end_time).getTime() - new Date(latestSession.created_at).getTime()) / 60000)} минут`
             : 'В процессе'
         }));
-      } else {
-        console.log('No test sessions found for employee');
-      }
-    } catch (err) {
-      console.error('Error loading chat history:', err);
+          } else {
+            console.log('No test sessions found for employee');
+        }
+      } catch (err) {
+        console.error('Error loading chat history:', err);
       setError('Ошибка при загрузке истории чатов');
     }
   };
@@ -851,7 +851,7 @@ function TestResultsAdmin() {
                     ))}
                   </ul>
                 </div>
-                
+
                 {testResults.salesPerformance.introduction.weaknesses.length > 0 && (
                   <div>
                     <h4 className="text-sm font-medium text-red-400 mb-2 flex items-center gap-1">
@@ -911,9 +911,9 @@ function TestResultsAdmin() {
                         {strength}
                       </li>
                     ))}
-                  </ul>
+                   </ul>
                 </div>
-                
+
                 {testResults.salesPerformance.warmup.weaknesses.length > 0 && (
                   <div>
                     <h4 className="text-sm font-medium text-red-400 mb-2 flex items-center gap-1">
@@ -928,7 +928,7 @@ function TestResultsAdmin() {
                         </li>
                       ))}
                     </ul>
-                  </div>
+                 </div>
                 )}
               </div>
             </div>
@@ -975,7 +975,7 @@ function TestResultsAdmin() {
                     ))}
                   </ul>
                 </div>
-                
+
                 {testResults.salesPerformance.sales.weaknesses.length > 0 && (
                   <div>
                     <h4 className="text-sm font-medium text-red-400 mb-2 flex items-center gap-1">
@@ -1047,21 +1047,21 @@ function TestResultsAdmin() {
             <MessageCircle className="w-5 h-5 text-purple-500" />
             История диалогов
           </h3>
-          
+
           {dialogues.length > 0 ? (
             <div className="space-y-6">
               {/* Dialog List */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {dialogues.map((dialogue) => (
-                  <div 
-                    key={dialogue.id}
+              {dialogues.map((dialogue) => (
+                <div 
+                  key={dialogue.id} 
                     className={`p-4 rounded-lg border ${selectedDialogue === dialogue.id ? 'bg-[#3d3d3d] border-purple-500' : 'bg-[#1a1a1a] border-[#3d3d3d] hover:bg-[#262626] hover:border-[#4d4d4d]'} cursor-pointer transition-colors`}
                     onClick={() => setSelectedDialogue(dialogue.id)}
                   >
                     <div className="flex justify-between items-start mb-3">
-                      <h4 className="font-medium">{dialogue.title}</h4>
+                        <h4 className="font-medium">{dialogue.title}</h4>
                       <span className="text-xs px-2 py-1 rounded-full bg-[#2d2d2d] text-gray-300">{dialogue.date}</span>
-                    </div>
+                        </div>
                     <div className="flex items-center justify-between text-sm text-gray-400">
                       <span>{dialogue.duration}</span>
                       {dialogue.messages.length > 0 ? (
@@ -1075,11 +1075,11 @@ function TestResultsAdmin() {
                           Нет сообщений
                         </span>
                       )}
-                    </div>
-                  </div>
+                        </div>
+                      </div>
                 ))}
-              </div>
-              
+                  </div>
+
               {/* Selected Dialog */}
               {selectedDialogue && (
                 <div className="mt-6 bg-[#1a1a1a] rounded-lg border border-[#3d3d3d] p-4">
@@ -1090,13 +1090,13 @@ function TestResultsAdmin() {
                   <div className="space-y-4">
                     {dialogues.find(d => d.id === selectedDialogue)?.messages?.length > 0 ? (
                       dialogues.find(d => d.id === selectedDialogue)?.messages.map((message) => (
-                        <div 
+                        <div
                           key={message.id}
                           className={`flex ${message.isOwn ? 'justify-end' : 'justify-start'}`}
                         >
-                          <div 
+                          <div
                             className={`max-w-[80%] p-3 rounded-lg ${
-                              message.isOwn 
+                              message.isOwn
                                 ? 'bg-purple-900 text-white rounded-tr-none' 
                                 : 'bg-[#2d2d2d] text-gray-200 rounded-tl-none'
                             }`}
@@ -1106,8 +1106,8 @@ function TestResultsAdmin() {
                               <span>{message.time}</span>
                             </div>
                             <p>{message.content}</p>
+                            </div>
                           </div>
-                        </div>
                       ))
                     ) : (
                       <div className="text-center py-8 text-gray-400">
@@ -1116,12 +1116,12 @@ function TestResultsAdmin() {
                         <p className="text-sm mt-2">
                           Возможно, сессия ещё не начата или была прервана.
                         </p>
-                      </div>
+                        </div>
                     )}
                   </div>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
           ) : (
             <div className="text-center py-12 bg-[#1a1a1a] rounded-lg border border-[#3d3d3d]">
               <AlertCircle className="w-12 h-12 mx-auto mb-4 text-yellow-500" />
