@@ -85,6 +85,24 @@ export interface DialogAnalysisResult {
         strengths?: string[];
         improvements?: string[];
       };
+      // Добавляем оценку по трем этапам продаж
+      sales_stages?: {
+        introduction: {
+          score: number;
+          strengths: string[];
+          weaknesses: string[];
+        };
+        warmup: {
+          score: number;
+          strengths: string[];
+          weaknesses: string[];
+        };
+        closing: {
+          score: number;
+          strengths: string[];
+          weaknesses: string[];
+        };
+      };
     };
     overall_conclusion: string;
     result_summary?: string;
@@ -811,6 +829,15 @@ export async function generateAnalysisPrompt(sessionId: string): Promise<string>
 Для критерия "Ценовая политика" дополнительно:
 Предоставь список сильных сторон (strengths) и областей, требующих улучшения (improvements).
 
+Дополнительно проанализируй эффективность продаж по трем этапам:
+1. Знакомство (Introduction): Насколько эффективно модель устанавливает контакт и создает первое впечатление.
+2. Прогрев (Warmup): Насколько эффективно модель подогревает интерес и создает предпосылки для продажи.
+3. Продажа/Закрытие (Closing): Насколько эффективно модель закрывает сделку и преодолевает возражения.
+
+Для каждого этапа:
+Выставь оценку от 0 до 5 (где 0 — минимально, 5 — идеально).
+Предоставь список сильных сторон (strengths) и слабых сторон (weaknesses).
+
 СТРОГО ОТВЕЧАЙ ТОЛЬКО В JSON ФОРМАТЕ, БЕЗ ДОПОЛНИТЕЛЬНОГО ТЕКСТА ДО ИЛИ ПОСЛЕ JSON.
 
 Предоставь результат анализа в формате JSON:
@@ -843,6 +870,23 @@ export async function generateAnalysisPrompt(sessionId: string): Promise<string>
         "verdict": "",
         "strengths": [],
         "improvements": []
+      },
+      "sales_stages": {
+        "introduction": {
+          "score": ,
+          "strengths": [],
+          "weaknesses": []
+        },
+        "warmup": {
+          "score": ,
+          "strengths": [],
+          "weaknesses": []
+        },
+        "closing": {
+          "score": ,
+          "strengths": [],
+          "weaknesses": []
+        }
       }
     },
     "overall_conclusion": "",

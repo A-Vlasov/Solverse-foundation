@@ -426,6 +426,31 @@ function TestResultsAdmin() {
                     details: analysis.metrics.pricing_policy.verdict
                   }
                 } : {}),
+                
+                // Обновляем данные о трех этапах продаж, если они доступны
+                ...(analysis.metrics.sales_stages ? {
+                  salesPerformance: {
+                    introduction: {
+                      score: analysis.metrics.sales_stages.introduction.score,
+                      conversionRate: Math.round(analysis.metrics.sales_stages.introduction.score * 20), // Преобразуем оценку 0-5 в процент 0-100
+                      strengths: analysis.metrics.sales_stages.introduction.strengths || [],
+                      weaknesses: analysis.metrics.sales_stages.introduction.weaknesses || []
+                    },
+                    warmup: {
+                      score: analysis.metrics.sales_stages.warmup.score,
+                      conversionRate: Math.round(analysis.metrics.sales_stages.warmup.score * 20),
+                      strengths: analysis.metrics.sales_stages.warmup.strengths || [],
+                      weaknesses: analysis.metrics.sales_stages.warmup.weaknesses || []
+                    },
+                    sales: {
+                      score: analysis.metrics.sales_stages.closing.score,
+                      conversionRate: Math.round(analysis.metrics.sales_stages.closing.score * 20),
+                      strengths: analysis.metrics.sales_stages.closing.strengths || [],
+                      weaknesses: analysis.metrics.sales_stages.closing.weaknesses || []
+                    }
+                  }
+                } : {}),
+                
                 recommendations: analysis.result_summary ? [analysis.result_summary] : ['Нет рекомендаций']
               }));
             } else {
@@ -544,6 +569,31 @@ function TestResultsAdmin() {
                 details: analysis.metrics.pricing_policy.verdict
               }
             } : {}),
+            
+            // Обновляем данные о трех этапах продаж, если они доступны
+            ...(analysis.metrics.sales_stages ? {
+              salesPerformance: {
+                introduction: {
+                  score: analysis.metrics.sales_stages.introduction.score,
+                  conversionRate: Math.round(analysis.metrics.sales_stages.introduction.score * 20), // Преобразуем оценку 0-5 в процент 0-100
+                  strengths: analysis.metrics.sales_stages.introduction.strengths || [],
+                  weaknesses: analysis.metrics.sales_stages.introduction.weaknesses || []
+                },
+                warmup: {
+                  score: analysis.metrics.sales_stages.warmup.score,
+                  conversionRate: Math.round(analysis.metrics.sales_stages.warmup.score * 20),
+                  strengths: analysis.metrics.sales_stages.warmup.strengths || [],
+                  weaknesses: analysis.metrics.sales_stages.warmup.weaknesses || []
+                },
+                sales: {
+                  score: analysis.metrics.sales_stages.closing.score,
+                  conversionRate: Math.round(analysis.metrics.sales_stages.closing.score * 20),
+                  strengths: analysis.metrics.sales_stages.closing.strengths || [],
+                  weaknesses: analysis.metrics.sales_stages.closing.weaknesses || []
+                }
+              }
+            } : {}),
+            
             recommendations: analysis.result_summary ? [analysis.result_summary] : ['Нет рекомендаций']
           }));
         }
