@@ -187,6 +187,8 @@ export async function createTestSession(
     }
 
     // Создаем 4 пустых чата для сессии
+    console.log('Creating 4 chats for session:', session.id);
+    
     const chatResults = await Promise.all([1, 2, 3, 4].map(chatNumber => 
       supabase
         .from('chats')
@@ -200,11 +202,24 @@ export async function createTestSession(
     ));
 
     // Проверяем, что все чаты созданы успешно
-    for (const { error } of chatResults) {
+    const chatErrors = [];
+    for (let i = 0; i < chatResults.length; i++) {
+      const { data, error } = chatResults[i];
       if (error) {
-        console.error('Error creating chat:', error);
-        throw new Error('Failed to create all chats');
+        console.error(`Error creating chat ${i+1}:`, error);
+        chatErrors.push({ chatNumber: i+1, error: error.message });
+      } else {
+        console.log(`Chat ${i+1} created successfully:`, { 
+          id: data.id, 
+          test_session_id: data.test_session_id,
+          chat_number: data.chat_number
+        });
       }
+    }
+    
+    if (chatErrors.length > 0) {
+      console.error('Failed to create all chats:', chatErrors);
+      throw new Error('Failed to create all chats');
     }
 
     // Получаем созданные чаты
@@ -219,7 +234,12 @@ export async function createTestSession(
       throw new Error('Failed to fetch created chats');
     }
 
-    console.log('Test session and chats created successfully:', { session, chats });
+    console.log('All chats created and fetched successfully:', {
+      sessionId: session.id,
+      employeeId: session.employee_id,
+      chatCount: chats ? chats.length : 0,
+      chatNumbers: chats ? chats.map(c => c.chat_number) : []
+    });
     return {
       ...session,
       chats
@@ -377,6 +397,19 @@ export async function addMessageToTestSession(
 ): Promise<Chat> {
   try {
     console.log('Adding message to session:', { sessionId, chatNumber, message });
+
+    // Проверка существования сессии перед добавлением сообщения
+    try {
+      const session = await getTestSession(sessionId);
+      console.log('Found session for message:', { 
+        sessionId, 
+        employeeId: session.employee_id,
+        completed: session.completed
+      });
+    } catch (sessionError) {
+      console.error('Session validation error:', sessionError);
+      // Продолжаем выполнение, так как ошибка может быть только в логировании
+    }
     
     // Получаем чат напрямую через single()
     const { data: chat, error: fetchError } = await supabase
@@ -393,8 +426,23 @@ export async function addMessageToTestSession(
 
     if (!chat) {
       console.error('Chat not found for session:', sessionId, 'and number:', chatNumber);
+      
+      // Дополнительная проверка существования чатов для сессии
+      const { data: existingChats, error: chatsError } = await supabase
+        .from('chats')
+        .select('id, chat_number')
+        .eq('test_session_id', sessionId);
+        
+      if (chatsError) {
+        console.error('Error checking existing chats:', chatsError);
+      } else {
+        console.log('Existing chats for session:', existingChats);
+      }
+      
       throw new Error('Chat not found');
     }
+
+    console.log('Found chat:', { chatId: chat.id, existingMessages: chat.messages?.length || 0 });
 
     // Преобразуем существующие сообщения из JSONB
     const existingMessages = chat.messages || [];
@@ -420,7 +468,11 @@ export async function addMessageToTestSession(
       throw new Error('Failed to update chat');
     }
 
-    console.log('Message added successfully:', updatedChat);
+    console.log('Message added successfully:', { 
+      chatId: updatedChat.id, 
+      messageCount: updatedChat.messages.length,
+      latestMessage: updatedChat.messages[updatedChat.messages.length - 1]
+    });
     return updatedChat;
   } catch (error) {
     console.error('Error in addMessageToTestSession:', error);
@@ -472,6 +524,84 @@ export async function getChatHistory(testSessionId: string): Promise<Chat[]> {
     return data;
   } catch (error) {
     console.error('Error in getChatHistory:', error);
+    throw error;
+  }
+}
+
+export async function getTestSession(sessionId: string): Promise<TestSession> {
+  try {
+    console.log('Fetching test session:', { sessionId });
+    
+    const { data, error } = await supabase
+      .from('test_sessions')
+      .select('*, employee:employee_id(*)')
+      .eq('id', sessionId)
+      .single();
+
+    if (error) {
+      console.error('Error fetching test session:', error);
+      throw new Error(`Failed to fetch test session: ${error.message}`);
+    }
+
+    if (!data) {
+      console.error('No test session found with ID:', sessionId);
+      throw new Error('Test session not found');
+    }
+
+    console.log('Test session fetched successfully:', data);
+    return data;
+  } catch (error) {
+    console.error('Error in getTestSession:', error);
+    throw error;
+  }
+}
+
+/**
+ * Completes all active test sessions for an employee
+ */
+export async function completeAllEmployeeTestSessions(employeeId: string): Promise<void> {
+  try {
+    console.log('Completing all active test sessions for employee:', employeeId);
+    
+    // Получаем все активные сессии для сотрудника
+    const { data: activeSessions, error: fetchError } = await supabase
+      .from('test_sessions')
+      .select('id')
+      .eq('employee_id', employeeId)
+      .eq('completed', false);
+      
+    if (fetchError) {
+      console.error('Error fetching active sessions:', fetchError);
+      throw fetchError;
+    }
+    
+    if (!activeSessions || activeSessions.length === 0) {
+      console.log('No active sessions found for employee:', employeeId);
+      return;
+    }
+    
+    console.log(`Found ${activeSessions.length} active sessions to complete`);
+    
+    // Завершаем каждую сессию
+    const currentTime = new Date().toISOString();
+    const { error: updateError } = await supabase
+      .from('test_sessions')
+      .update({
+        end_time: currentTime,
+        completed: true,
+        updated_at: currentTime
+      })
+      .eq('employee_id', employeeId)
+      .eq('completed', false);
+      
+    if (updateError) {
+      console.error('Error completing sessions:', updateError);
+      throw updateError;
+    }
+    
+    console.log(`Successfully completed ${activeSessions.length} sessions for employee:`, employeeId);
+  } catch (error) {
+    console.error('Error in completeAllEmployeeTestSessions:', error);
     throw error;
   }
 }

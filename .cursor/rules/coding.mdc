@@ -1,7 +1,7 @@
 ---
 description: How to write code
-globs: 
-alwaysApply: false
+globs: *
+alwaysApply: true
 ---
 # Coding pattern preferences
 

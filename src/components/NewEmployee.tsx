@@ -11,7 +11,7 @@ import {
   ExternalLink,
   AlertCircle,
 } from 'lucide-react';
-import { createEmployee } from '../lib/supabase';
+import { createEmployee, completeAllEmployeeTestSessions } from '../lib/supabase';
 
 function NewEmployee() {
   const navigate = useNavigate();
@@ -55,6 +55,15 @@ function NewEmployee() {
       });
       
       console.log('Employee created successfully:', employee);
+      
+      // Завершаем все активные сессии для этого сотрудника (на всякий случай)
+      try {
+        await completeAllEmployeeTestSessions(employee.id);
+        console.log('All previous sessions for this employee have been marked as completed');
+      } catch (sessionError) {
+        console.error('Error completing previous sessions:', sessionError);
+        // Продолжаем выполнение даже при ошибке
+      }
 
       // Generate test link
       const token = Math.random().toString(36).substring(7) + Date.now().toString(36);
@@ -70,7 +79,21 @@ function NewEmployee() {
         startDate: formData.startDate
       };
       console.log('Saving candidate data to sessionStorage:', candidateData);
+      
+      // Полный сброс всех данных сессии
+      console.log('Resetting all session data for new candidate');
+      
+      // Удаляем ID сессии и все связанные с чатом данные
+      sessionStorage.removeItem('currentTestSessionId');
+      
+      // Очищаем локальное состояние для нового соискателя
+      localStorage.removeItem('chatHistories');
+      localStorage.removeItem('userStatus');
+      
+      // Сохраняем только новые данные соискателя
       sessionStorage.setItem('candidateData', JSON.stringify(candidateData));
+      
+      console.log('Session data reset completed, only new candidate data preserved');
     } catch (err) {
       console.error('Error creating employee:', err);
       setError('Ошибка при создании профиля сотрудника. Пожалуйста, попробуйте снова.');
