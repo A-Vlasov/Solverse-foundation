@@ -11,6 +11,14 @@
           "@modelcontextprotocol/server-postgres",
           "postgresql://postgres.amsxabtrixxfzrhinese:6mdNWTXNBc7YvaYK@aws-0-us-east-2.pooler.supabase.com:5432/postgres"
         ]
+      },
+      "browser": {
+        "command": "C:\\Windows\\System32\\cmd.exe",
+        "args": [
+          "/c",
+          "npx",
+          "@agentdeskai/browser-tools-mcp"
+        ]
       }
     }
   }

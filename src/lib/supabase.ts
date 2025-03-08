@@ -139,6 +139,38 @@ export async function createTestSession(
   try {
     console.log('Creating test session:', { employeeId });
     
+    // Проверяем, существуют ли уже активные сессии для этого сотрудника
+    const { data: existingSessions, error: checkError } = await supabase
+      .from('test_sessions')
+      .select('*')
+      .eq('employee_id', employeeId)
+      .eq('completed', false)
+      .order('created_at', { ascending: false })
+      .limit(1);
+    
+    if (checkError) {
+      console.error('Error checking existing sessions:', checkError);
+    } else if (existingSessions && existingSessions.length > 0) {
+      console.log('Found existing active session for employee:', existingSessions[0]);
+      
+      // Проверяем, существуют ли чаты для этой сессии
+      const { data: existingChats, error: chatError } = await supabase
+        .from('chats')
+        .select('*')
+        .eq('test_session_id', existingSessions[0].id)
+        .order('chat_number');
+      
+      if (!chatError && existingChats && existingChats.length > 0) {
+        console.log('Using existing session with chats:', existingChats.length);
+        return {
+          ...existingSessions[0],
+          chats: existingChats
+        };
+      }
+      
+      console.log('Existing session has no chats, proceeding to create new session');
+    }
+    
     // Создаем тестовую сессию
     const { data: session, error: sessionError } = await supabase
       .from('test_sessions')

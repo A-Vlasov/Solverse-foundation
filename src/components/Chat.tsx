@@ -15,7 +15,17 @@ import {
 } from '../lib/supabase';
 
 // Типы для использования в Chat компоненте
-type MessageRoleInternal = 'user' | 'assistant';
+type MessageRoleInternal = 'user' | 'assistant' | 'system';
+
+// Интерфейс для сообщений из базы данных
+interface DatabaseChatMessage {
+  id: string;
+  message: string;
+  created_at: string;
+  is_own: boolean;
+  chat_number: number;
+  test_session_id: string;
+}
 
 // Интерфейс для сообщений API Grok
 interface GrokMessage {
@@ -59,13 +69,13 @@ interface CustomImage {
   description: string;
 }
 
-// Add new interface for Grok conversation details
+// Обновляем интерфейс GrokConversation
 interface GrokConversation {
-  conversationId: string;
-  parentResponseId: string;
-  chatLink?: string;
+  messages: GrokMessage[];
+  lastMessageTime: string;
 }
 
+// Обновляем интерфейс UserConversations
 interface UserConversations {
   [key: string]: GrokConversation;
 }
@@ -122,10 +132,70 @@ function generateUUID() {
   return uuid;
 }
 
+interface CompletionModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  testResults: {
+    totalMessages: number;
+    duration: string;
+    completedAt: string;
+  };
+}
+
+const CompletionModal: React.FC<CompletionModalProps> = ({ isOpen, onClose, testResults }) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-[#2d2d2d] rounded-lg p-6 max-w-md w-full mx-4">
+        <div className="text-center">
+          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-r from-pink-500 to-purple-500 flex items-center justify-center">
+            <Check className="w-8 h-8 text-white" />
+          </div>
+          <h2 className="text-2xl font-bold mb-4">Поздравляем!</h2>
+          <p className="text-gray-300 mb-6">Вы успешно завершили тестирование!</p>
+          
+          <div className="space-y-4 text-left bg-[#1a1a1a] rounded-lg p-4 mb-6">
+            <div>
+              <p className="text-gray-400 text-sm">Всего сообщений:</p>
+              <p className="text-lg font-semibold">{testResults.totalMessages}</p>
+            </div>
+            <div>
+              <p className="text-gray-400 text-sm">Длительность теста:</p>
+              <p className="text-lg font-semibold">{testResults.duration}</p>
+            </div>
+            <div>
+              <p className="text-gray-400 text-sm">Завершено:</p>
+              <p className="text-lg font-semibold">{testResults.completedAt}</p>
+            </div>
+          </div>
+
+          <button
+            onClick={onClose}
+            className="w-full py-3 rounded-lg bg-gradient-to-r from-pink-500 to-purple-500 hover:opacity-90 transition-opacity font-semibold"
+          >
+            Вернуться на главную
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Добавляем новый интерфейс для сессий тестирования
+interface TestSessions {
+  [key: string]: string | null; // key - имя сотрудника, value - ID сессии
+}
+
+// Добавляем интерфейс для таймеров сотрудников
+interface EmployeeTimers {
+  [key: string]: number;
+}
+
 function Chat() {
   const [message, setMessage] = useState('');
   const [selectedUser, setSelectedUser] = useState('Marcus');
-  const [timeRemaining, setTimeRemaining] = useState(60 * 60);
+  const [timeRemaining, setTimeRemaining] = useState(120); // 2 минуты
   const navigate = useNavigate();
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -154,14 +224,39 @@ function Chat() {
     Ava: [],
   });
 
-  // Add new state for Grok conversations
-  const [userConversations, setUserConversations] = useState<UserConversations>({});
+  // Обновляем состояние для хранения чатов Grok
+  const [userConversations, setUserConversations] = useState<UserConversations>({
+    Marcus: { messages: [], lastMessageTime: '' },
+    Shrek: { messages: [], lastMessageTime: '' },
+    Olivia: { messages: [], lastMessageTime: '' },
+    Ava: { messages: [], lastMessageTime: '' }
+  });
   
   // Добавляем состояние для модального окна промпта
   const [isPromptModalOpen, setIsPromptModalOpen] = useState(false);
   
-  // Добавляем состояние для хранения id сессии тестирования
-  const [testSessionId, setTestSessionId] = useState<string | null>(null);
+  // Обновляем состояние для хранения сессий тестирования
+  const [testSessions, setTestSessions] = useState<TestSessions>({
+    Marcus: null,
+    Shrek: null,
+    Olivia: null,
+    Ava: null
+  });
+
+  const [showCompletionModal, setShowCompletionModal] = useState(false);
+  const [testResults, setTestResults] = useState({
+    totalMessages: 0,
+    duration: '',
+    completedAt: ''
+  });
+
+  // Добавляем состояние для хранения таймеров каждого сотрудника
+  const [employeeTimers, setEmployeeTimers] = useState<EmployeeTimers>({
+    Marcus: 120,
+    Shrek: 120,
+    Olivia: 120,
+    Ava: 120
+  });
 
   const users = [
     { name: 'Marcus', status: 'Online', lastMessage: 'Страстный клиент', role: 'Игривый' },
@@ -287,115 +382,156 @@ function Chat() {
     });
   }, [chatHistories, selectedUser]);
 
-  // Создаем новую сессию тестирования при загрузке компонента
-  useEffect(() => {
-    const initTestSession = async () => {
-      try {
-        // Получаем или создаем userId
-        let candidateData = JSON.parse(sessionStorage.getItem('candidateData') || '{}');
-        console.log('Retrieved candidate data from sessionStorage:', candidateData);
-        
-        if (!candidateData.userId) {
-          console.warn('No userId found in sessionStorage, this should not happen in normal flow');
-          // Сохраняем существующие данные firstName и lastName
-          const firstName = candidateData.firstName;
-          const lastName = candidateData.lastName;
-          candidateData = {
-            ...candidateData,
-            userId: generateUUID(),
-            // Убеждаемся, что firstName и lastName сохраняются
-            firstName,
-            lastName
-          };
-          console.log('Created new candidateData with UUID:', candidateData);
-          sessionStorage.setItem('candidateData', JSON.stringify(candidateData));
-        }
-        
-        const userId = candidateData.userId;
-        console.log('Using userId for test session:', userId);
-        
-        // Получаем имя и фамилию соискателя из sessionStorage
-        const firstName = candidateData.firstName || null;
-        const lastName = candidateData.lastName || null;
-        
-        if (!firstName || !lastName) {
-          console.warn('Missing firstName or lastName in candidateData:', { firstName, lastName });
-        }
-        
-        // Создаем сессию тестирования с данными соискателя
-        console.log('Creating test session with data:', {
-          userId,
-          selectedUser,
-          firstName,
-          lastName
-        });
-        
-        const session = await createTestSession(userId);
-        setTestSessionId(session.id);
-        console.log('Test session created successfully:', session);
-      } catch (error) {
-        console.error('Error creating test session:', error);
+  // Объявляем функцию createSessionForEmployee перед её использованием
+  const createSessionForEmployee = async (employeeName: string) => {
+    try {
+      console.log('Creating test session for:', employeeName);
+      
+      const employees = await getEmployees();
+      if (!employees || employees.length === 0) {
+        throw new Error('No employees found');
       }
-    };
-    
-    initTestSession();
-    
-    // Cleanup function для завершения сессии при закрытии компонента
-    return () => {
-      if (testSessionId) {
-        const completeSession = async () => {
-          try {
-            // Подсчитываем общее количество сообщений
-            const totalMessages = Object.values(chatHistories).reduce(
-              (total, messages) => total + messages.length, 
-              0
-            );
-            
-            const testSessionId = sessionStorage.getItem('currentTestSessionId');
-            if (!testSessionId) {
-              console.error('No test session ID found');
-              return;
-            }
-            await completeTestSession(testSessionId);
-            console.log('Test session completed on unmount');
-          } catch (error) {
-            console.error('Error completing test session:', error);
-          }
-        };
-        
-        completeSession();
+      
+      const session = await createTestSession(employees[0].id);
+      
+      // Устанавливаем новую сессию и сбрасываем таймер
+      setTestSessions(prev => ({
+        ...prev,
+        [employeeName]: session.id
+      }));
+      
+      setEmployeeTimers(prev => ({
+        ...prev,
+        [employeeName]: 120
+      }));
+      
+      // Если это текущий сотрудник, обновляем текущий таймер
+      if (employeeName === selectedUser) {
+        setTimeRemaining(120);
       }
-    };
-  }, []);
-  
-  // Обновляем текущую сессию при смене персонажа
-  useEffect(() => {
-    const updateCharacter = async () => {
-      if (testSessionId) {
-        try {
-          console.log('Selected character:', selectedUser);
-        } catch (error) {
-          console.error('Error with character selection:', error);
-        }
-      }
-    };
-    
-    updateCharacter();
-  }, [selectedUser, testSessionId]);
+      
+      sessionStorage.setItem(`testSession_${employeeName}`, session.id);
 
-  // Обновляем таймер и завершаем сессию при истечении времени
+      // Загружаем историю чатов для новой сессии
+      const chats = await getTestSessionChats(session.id);
+      if (chats && chats.length > 0) {
+        // Преобразуем сообщения из всех чатов в единый список
+        const allMessages = chats.flatMap(chat => 
+          (chat.messages || []).map(msg => ({
+            id: `msg-${Date.now()}-${Math.random()}`,
+            sender: msg.isOwn ? 'You' : employeeName,
+            content: msg.content,
+            time: new Date(msg.time).toLocaleTimeString('en-US', { 
+              hour: 'numeric', 
+              minute: 'numeric', 
+              hour12: true 
+            }),
+            isOwn: msg.isOwn,
+            isRead: msg.isRead ?? true
+          }))
+        );
+
+        // Обновляем историю чатов для этого сотрудника
+        setChatHistories(prev => ({
+          ...prev,
+          [employeeName]: allMessages
+        }));
+
+        // Обновляем контекст Grok
+        const grokMessages = allMessages.map(msg => ({
+          role: msg.isOwn ? 'user' as MessageRoleInternal : 'assistant' as MessageRoleInternal,
+          content: msg.content
+        }));
+
+        setUserConversations(prev => ({
+          ...prev,
+          [employeeName]: {
+            messages: [
+              { role: 'system', content: userPrompts[employeeName] },
+              ...grokMessages
+            ],
+            lastMessageTime: new Date().toISOString()
+          }
+        }));
+      } else {
+        // Если чатов нет, инициализируем пустые массивы
+        setChatHistories(prev => ({
+          ...prev,
+          [employeeName]: []
+        }));
+
+        setUserConversations(prev => ({
+          ...prev,
+          [employeeName]: {
+            messages: [{ role: 'system', content: userPrompts[employeeName] }],
+            lastMessageTime: new Date().toISOString()
+          }
+        }));
+      }
+      
+      console.log(`Test session created for ${employeeName}:`, session.id);
+      return session.id;
+    } catch (error) {
+      console.error(`Error creating test session for ${employeeName}:`, error);
+      return null;
+    }
+  };
+
+  // Обновляем useEffect для переключения между сотрудниками
+  useEffect(() => {
+    // При смене сотрудника обновляем текущий таймер
+    setTimeRemaining(employeeTimers[selectedUser]);
+
+    // Если у сотрудника нет активной сессии, создаем новую
+    if (!testSessions[selectedUser]) {
+      createSessionForEmployee(selectedUser);
+    }
+  }, [selectedUser, employeeTimers, testSessions]);
+
+  // Обновляем useEffect для таймера
   useEffect(() => {
     const timer = setInterval(() => {
       setTimeRemaining((prevTime) => {
         if (prevTime <= 1) {
           clearInterval(timer);
-          // Завершаем сессию тестирования
-          const storedSessionId = sessionStorage.getItem('currentTestSessionId');
-          if (storedSessionId) {
+          
+          // Подсчитываем сообщения только текущего сотрудника
+          const totalMessages = chatHistories[selectedUser].length;
+
+          // Формируем результаты тестирования
+          setTestResults({
+            totalMessages,
+            duration: '2 минуты',
+            completedAt: new Date().toLocaleString('ru-RU', {
+              hour: '2-digit',
+              minute: '2-digit',
+              day: '2-digit',
+              month: '2-digit',
+              year: 'numeric'
+            })
+          });
+
+          // Завершаем только текущую сессию
+          const currentSessionId = testSessions[selectedUser];
+          if (currentSessionId) {
             const completeSession = async () => {
               try {
-                await completeTestSession(storedSessionId);
-                console.log('Test session completed on time expiration');
+                await completeTestSession(currentSessionId);
+                console.log(`Test session completed for ${selectedUser}`);
+                
+                // Очищаем сессию и таймер только для текущего сотрудника
+                setTestSessions(prev => ({
+                  ...prev,
+                  [selectedUser]: null
+                }));
+                setEmployeeTimers(prev => ({
+                  ...prev,
+                  [selectedUser]: 0
+                }));
+                sessionStorage.removeItem(`testSession_${selectedUser}`);
+                
+                // Показываем модальное окно с результатами
+                setShowCompletionModal(true);
               } catch (error) {
                 console.error('Error completing test session:', error);
               }
@@ -404,27 +540,29 @@ function Chat() {
             completeSession();
           }
           
-          alert('Время тестирования истекло!');
-          navigate('/');
           return 0;
         }
+        
+        // Обновляем таймер для текущего сотрудника
+        setEmployeeTimers(prev => ({
+          ...prev,
+          [selectedUser]: prevTime - 1
+        }));
+        
         return prevTime - 1;
       });
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [navigate]);
+  }, [selectedUser, testSessions]);
 
   // Обновляем сессию после добавления каждого сообщения
   useEffect(() => {
     const updateMessageCount = async () => {
-      if (testSessionId) {
+      if (testSessions[selectedUser]) {
         try {
           // Подсчитываем общее количество сообщений
-          const totalMessages = Object.values(chatHistories).reduce(
-            (total, messages) => total + messages.length, 
-            0
-          );
+          const totalMessages = chatHistories[selectedUser].length;
           
           console.log('Total messages in session:', totalMessages);
         } catch (error) {
@@ -434,7 +572,7 @@ function Chat() {
     };
     
     updateMessageCount();
-  }, [chatHistories, testSessionId]);
+  }, [chatHistories, selectedUser, testSessions]);
 
   const formatTime = (seconds: number) => {
     const minutes = Math.floor(seconds / 60);
@@ -625,17 +763,6 @@ function Chat() {
     
     if (failedIndex <= 0) return;
     
-    // Get the last user message before the error
-    let lastUserMessageIndex = -1;
-    for (let i = failedIndex - 1; i >= 0; i--) {
-      if (chatHistory[i].isOwn) {
-        lastUserMessageIndex = i;
-        break;
-      }
-    }
-    
-    if (lastUserMessageIndex === -1) return;
-    
     // Remove the error message
     setChatHistories(prev => ({
       ...prev,
@@ -647,8 +774,8 @@ function Chat() {
     setRetryingMessage(failedMessage);
 
     try {
-      const storedSessionId = sessionStorage.getItem('currentTestSessionId');
-      if (!storedSessionId) {
+      const currentSessionId = testSessions[selectedUser];
+      if (!currentSessionId) {
         throw new Error('No test session ID available');
       }
 
@@ -658,15 +785,11 @@ function Chat() {
         throw new Error('Invalid chat number');
       }
 
-      // Получаем историю сообщений для текущего пользователя
-      const messagesToSend = chatHistory.slice(0, failedIndex).map(msg => ({
-        role: msg.isOwn ? 'user' : 'assistant',
-        content: msg.imageUrl 
-          ? `${msg.content} [Пользователь отправил изображение]` 
-          : msg.content
-      })) as { role: 'user' | 'assistant' | 'system', content: string }[];
-
-      const grokResponse = await generateGrokResponse(messagesToSend);
+      // Получаем текущий контекст чата для выбранного пользователя
+      const currentConversation = userConversations[selectedUser];
+      
+      // Получаем ответ от Grok, используя существующий контекст
+      const grokResponse = await generateGrokResponse(currentConversation.messages);
 
       if (grokResponse.error) {
         const errorMessage = {
@@ -685,20 +808,7 @@ function Chat() {
           [selectedUser]: [...prev[selectedUser], errorMessage]
         }));
       } else {
-        // Сохраняем ответ ассистента в чат
-        const assistantChatMessage: SupabaseChatMessage = {
-          content: grokResponse.response,
-          time: new Date().toISOString(),
-          isOwn: false,
-          isRead: false
-        };
-
-        await addMessageToTestSession(
-          storedSessionId,
-          chatNumber as 1 | 2 | 3 | 4,
-          assistantChatMessage
-        );
-
+        // Сохраняем ответ ассистента
         const assistantMessage = {
           id: `assistant-${Date.now()}`,
           sender: selectedUser,
@@ -708,9 +818,33 @@ function Chat() {
           isRead: false
         };
 
+        // Сохраняем ответ в базу данных
+        const assistantChatMessage: SupabaseChatMessage = {
+          content: grokResponse.response,
+          time: new Date().toISOString(),
+          isOwn: false,
+          isRead: false
+        };
+
+        await addMessageToTestSession(
+          currentSessionId,
+          chatNumber as 1 | 2 | 3 | 4,
+          assistantChatMessage
+        );
+
+        // Обновляем историю чата
         setChatHistories(prev => ({
           ...prev,
           [selectedUser]: [...prev[selectedUser], assistantMessage]
+        }));
+
+        // Обновляем контекст Grok
+        setUserConversations(prev => ({
+          ...prev,
+          [selectedUser]: {
+            messages: [...currentConversation.messages, { role: 'assistant', content: grokResponse.response }],
+            lastMessageTime: new Date().toISOString()
+          }
         }));
       }
       
@@ -752,28 +886,16 @@ function Chat() {
     
     const messageContent = message.trim();
     
-    // Получаем данные пользователя из sessionStorage
-    const candidateData = JSON.parse(sessionStorage.getItem('candidateData') || '{}');
-    if (!candidateData.userId) {
-      console.error('No userId found');
-      return;
+    // Получаем ID сессии для текущего сотрудника
+    const currentSessionId = testSessions[selectedUser];
+    if (!currentSessionId) {
+      throw new Error(`No test session found for ${selectedUser}`);
     }
-    
-    // Получаем или создаем тестовую сессию
-    const storedSessionId = sessionStorage.getItem('currentTestSessionId');
-    let currentTestSessionId: string;
-    
-    if (!storedSessionId) {
-      try {
-        const session = await createTestSession(candidateData.userId);
-        currentTestSessionId = session.id;
-        sessionStorage.setItem('currentTestSessionId', currentTestSessionId);
-      } catch (error) {
-        console.error('Error creating test session:', error);
-        return;
-      }
-    } else {
-      currentTestSessionId = storedSessionId;
+
+    // Определяем номер чата на основе выбранного пользователя
+    const chatNumber = users.findIndex(user => user.name === selectedUser) + 1;
+    if (chatNumber < 1 || chatNumber > 4) {
+      throw new Error('Invalid chat number');
     }
 
     const newMessage = {
@@ -786,6 +908,20 @@ function Chat() {
       imageUrl: selectedImage || undefined
     };
 
+    // Сохраняем сообщение пользователя в базу данных
+    const userChatMessage: SupabaseChatMessage = {
+      content: messageContent,
+      time: new Date().toISOString(),
+      isOwn: true,
+      isRead: true
+    };
+
+    await addMessageToTestSession(
+      currentSessionId,
+      chatNumber as 1 | 2 | 3 | 4,
+      userChatMessage
+    );
+
     setChatHistories(prev => ({
       ...prev,
       [selectedUser]: [...prev[selectedUser], newMessage]
@@ -796,115 +932,30 @@ function Chat() {
     setLoadingStates(prev => ({ ...prev, [selectedUser]: true }));
 
     try {
-      // Определяем номер чата на основе выбранного пользователя
-      const chatNumber = users.findIndex(user => user.name === selectedUser) + 1;
-      if (chatNumber < 1 || chatNumber > 4) {
-        throw new Error('Invalid chat number');
-      }
-
-      // Проверяем существование тестовой сессии
-      let currentTestSessionId = sessionStorage.getItem('currentTestSessionId');
-      let sessionData: TestSession | null = null;
+      // Получаем текущий контекст чата для выбранного пользователя
+      const currentConversation = userConversations[selectedUser];
       
-      // Если сессии нет или невалидный ID, создаем новую
-      if (!currentTestSessionId) {
-        console.log('No test session found, creating new one...');
-        const employees = await getEmployees();
-        if (!employees || employees.length === 0) {
-          throw new Error('No employees found');
-        }
-        
-        sessionData = await createTestSession(employees[0].id);
-        currentTestSessionId = sessionData.id;
-        console.log('Created new test session:', sessionData);
-        sessionStorage.setItem('currentTestSessionId', currentTestSessionId);
-      } else {
-        // Проверяем существование чатов для текущей сессии
-        console.log('Checking existing session:', currentTestSessionId);
-        try {
-          const existingChats = await getTestSessionChats(currentTestSessionId);
-          
-          if (!existingChats || existingChats.length === 0) {
-            console.log('No chats found for session, creating new session...');
-            // Если чаты не найдены, создаем новую сессию
-            const employees = await getEmployees();
-            if (!employees || employees.length === 0) {
-              throw new Error('No employees found');
-            }
-            
-            sessionData = await createTestSession(employees[0].id);
-            currentTestSessionId = sessionData.id;
-            console.log('Created new test session:', sessionData);
-            sessionStorage.setItem('currentTestSessionId', currentTestSessionId);
-          }
-        } catch (error) {
-          console.error('Error checking existing session:', error);
-          // В случае ошибки создаем новую сессию
-          const employees = await getEmployees();
-          if (!employees || employees.length === 0) {
-            throw new Error('No employees found');
-          }
-          
-          sessionData = await createTestSession(employees[0].id);
-          currentTestSessionId = sessionData.id;
-          console.log('Created new test session:', sessionData);
-          sessionStorage.setItem('currentTestSessionId', currentTestSessionId);
-        }
-      }
-
-      if (!currentTestSessionId) {
-        throw new Error('Failed to create or get test session');
-      }
-
-      // Сохраняем сообщение пользователя в чат
-      const chatMessage: SupabaseChatMessage = {
-        content: messageContent,
-        time: new Date().toISOString(),
-        isOwn: true,
-        isRead: true
-      };
-
-      console.log('Sending message to chat:', {
-        sessionId: currentTestSessionId,
-        chatNumber,
-        message: chatMessage
-      });
-
-      const updatedChat = await addMessageToTestSession(
-        currentTestSessionId,
-        chatNumber as 1 | 2 | 3 | 4,
-        chatMessage
-      );
-
-      console.log('Message sent successfully:', updatedChat);
-
-      // Получаем историю сообщений для текущего пользователя
-      const chatHistory = chatHistories[selectedUser];
-      
-      // Создаем массив сообщений для отправки в API
-      let messagesToSend = chatHistory.map(msg => ({
-        role: msg.isOwn ? 'user' : 'assistant',
-        content: msg.imageUrl 
-          ? `${msg.content} [Пользователь отправил изображение]` 
-          : msg.content
-      })) as { role: 'user' | 'assistant' | 'system', content: string }[];
-      
-      messagesToSend.push({
+      // Создаем новое сообщение для Grok
+      const newGrokMessage: GrokMessage = {
         role: 'user',
         content: newMessage.imageUrl 
           ? `${newMessage.content} [Пользователь отправил изображение]` 
           : newMessage.content
-      });
-
-      // Если это первое сообщение в чате, добавляем системный промпт
-      if (chatHistory.length === 0) {
-        messagesToSend.unshift({
+      };
+      
+      // Обновляем контекст чата
+      const updatedMessages = [...currentConversation.messages, newGrokMessage];
+      
+      // Если это первое сообщение, добавляем системный промпт
+      if (currentConversation.messages.length === 0) {
+        updatedMessages.unshift({
           role: 'system',
           content: userPrompts[selectedUser]
         });
       }
 
-      const grokResponse = await generateGrokResponse(messagesToSend);
+      // Получаем ответ от Grok
+      const grokResponse = await generateGrokResponse(updatedMessages);
 
       if (grokResponse.error) {
         const errorMessage = {
@@ -923,20 +974,7 @@ function Chat() {
           [selectedUser]: [...prev[selectedUser], errorMessage]
         }));
       } else {
-        // Сохраняем ответ ассистента в чат
-        const assistantChatMessage: SupabaseChatMessage = {
-          content: grokResponse.response,
-          time: new Date().toISOString(),
-          isOwn: false,
-          isRead: false
-        };
-
-        await addMessageToTestSession(
-          currentTestSessionId,
-          chatNumber as 1 | 2 | 3 | 4,
-          assistantChatMessage
-        );
-
+        // Сохраняем ответ ассистента
         const assistantMessage = {
           id: `assistant-${Date.now()}`,
           sender: selectedUser,
@@ -946,9 +984,33 @@ function Chat() {
           isRead: false
         };
 
+        // Сохраняем ответ в базу данных
+        const assistantChatMessage: SupabaseChatMessage = {
+          content: grokResponse.response,
+          time: new Date().toISOString(),
+          isOwn: false,
+          isRead: false
+        };
+
+        await addMessageToTestSession(
+          currentSessionId,
+          chatNumber as 1 | 2 | 3 | 4,
+          assistantChatMessage
+        );
+
+        // Обновляем историю чата
         setChatHistories(prev => ({
           ...prev,
           [selectedUser]: [...prev[selectedUser], assistantMessage]
+        }));
+
+        // Обновляем контекст Grok
+        setUserConversations(prev => ({
+          ...prev,
+          [selectedUser]: {
+            messages: [...updatedMessages, { role: 'assistant', content: grokResponse.response }],
+            lastMessageTime: new Date().toISOString()
+          }
         }));
       }
 
@@ -1076,11 +1138,15 @@ function Chat() {
                     <div className="text-sm text-gray-400 truncate">
                       {isTyping ? (
                         <span className="text-pink-500">печатает...</span>
-                      ) : (
+                      ) : lastMessage ? (
                         <div className="flex items-center gap-1">
-                          {lastMessage?.isOwn && <span>Вы: </span>}
-                          <span className="truncate">{lastMessage?.content}</span>
+                          <span className="font-medium">
+                            {lastMessage.isOwn ? 'Вы:' : `${user.name}:`}
+                          </span>
+                          <span className="truncate">{lastMessage.content}</span>
                         </div>
+                      ) : (
+                        <span className="text-gray-500">Нет сообщений</span>
                       )}
                     </div>
                   </div>
@@ -1399,6 +1465,16 @@ function Chat() {
         onClose={() => setIsPromptModalOpen(false)}
         userName={selectedUser}
         promptText={userPrompts[selectedUser]}
+      />
+
+      {/* Добавляем модальное окно с результатами */}
+      <CompletionModal
+        isOpen={showCompletionModal}
+        onClose={() => {
+          setShowCompletionModal(false);
+          navigate('/');
+        }}
+        testResults={testResults}
       />
     </div>
   );
