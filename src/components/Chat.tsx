@@ -129,15 +129,18 @@ function generateUUID() {
 function Chat() {
   const [message, setMessage] = useState('');
   const [selectedUser, setSelectedUser] = useState('Marcus');
-  const [timeRemaining, setTimeRemaining] = useState(60);
+  const [timeRemaining, setTimeRemaining] = useState(1200);
   const [showCongratulations, setShowCongratulations] = useState(false);
   const [calculatingResults, setCalculatingResults] = useState(false);
+  const [isSessionComplete, setIsSessionComplete] = useState(false);
   const [analysisComplete, setAnalysisComplete] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<DialogAnalysisResult | null>(null);
+  const [testSessionId, setTestSessionId] = useState<string | null>(null);
+  const [showPromptModal, setShowPromptModal] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const navigate = useNavigate();
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [showImageGallery, setShowImageGallery] = useState(false);
   const [customImages, setCustomImages] = useState<CustomImage[]>([]);
   const [activeTab, setActiveTab] = useState<'preloaded' | 'custom'>('preloaded');
@@ -168,14 +171,11 @@ function Chat() {
   // Добавляем состояние для модального окна промпта
   const [isPromptModalOpen, setIsPromptModalOpen] = useState(false);
   
-  // Добавляем состояние для хранения id сессии тестирования
-  const [testSessionId, setTestSessionId] = useState<string | null>(null);
-
   const users = [
-    { name: 'Marcus', status: 'Online', lastMessage: 'Страстный клиент', role: 'Игривый' },
-    { name: 'Shrek', status: 'Online', lastMessage: 'Капризный клиент', role: 'Нестабильный' },
-    { name: 'Olivia', status: 'Away', lastMessage: 'Торгуется о цене', role: 'Экономный' },
-    { name: 'Ava', status: 'Online', lastMessage: 'Проверяет границы', role: 'Провокационный' },
+    { name: 'Marcus', status: 'Online', lastMessage: 'Страстный клиент' },
+    { name: 'Shrek', status: 'Online', lastMessage: 'Капризный клиент' },
+    { name: 'Olivia', status: 'Away', lastMessage: 'Торгуется о цене' },
+    { name: 'Ava', status: 'Online', lastMessage: 'Проверяет границы' },
   ];
 
   // Load custom images from localStorage on component mount
@@ -806,6 +806,9 @@ function Chat() {
           [selectedUser]: [...prev[selectedUser], errorMessage]
         }));
       } else {
+        // Имитируем печатание ответа перед его отображением
+        await simulateTypingDelay(selectedUser);
+        
         // Сохраняем ответ ассистента в чат
         const assistantChatMessage: SupabaseChatMessage = {
           content: grokResponse.response,
@@ -1045,6 +1048,9 @@ function Chat() {
           [selectedUser]: [...prev[selectedUser], errorMessage]
         }));
       } else {
+        // Имитируем печатание ответа перед его отображением
+        await simulateTypingDelay(selectedUser);
+        
         // Сохраняем ответ ассистента в чат
         const assistantChatMessage: SupabaseChatMessage = {
           content: grokResponse.response,
@@ -1440,20 +1446,7 @@ function Chat() {
               </div>
               <div>
                 <h2 className="font-semibold">{selectedUser}</h2>
-                <p className="text-sm text-gray-400">{currentUser?.role}</p>
               </div>
-            </div>
-            <div className="flex items-center space-x-4">
-              <button
-                onClick={handleOpenPromptModal}
-                className="flex items-center space-x-1 text-gray-400 hover:text-pink-500 transition-colors"
-                title="Посмотреть промпт"
-              >
-                <Eye className="w-5 h-5" />
-                <span className="text-sm">Промпт</span>
-              </button>
-              <Heart className="w-6 h-6 text-pink-500" />
-              <Settings className="w-6 h-6" />
             </div>
           </div>
 

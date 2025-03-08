@@ -390,7 +390,7 @@ export async function completeTestSession(
   }
 }
 
-export async function getRecentTestSessions(limit: number = 10): Promise<TestSession[]> {
+export async function getRecentTestSessions(limit: number = 20): Promise<TestSession[]> {
   try {
     const { data, error } = await supabase
       .from('test_sessions')
@@ -414,16 +414,35 @@ export async function getRecentTestSessions(limit: number = 10): Promise<TestSes
       throw error;
     }
 
-    // Убираем дубликаты по employee_id, оставляя только самую последнюю сессию
-    const uniqueSessions = data?.reduce((acc: TestSession[], current) => {
-      const existingSession = acc.find(session => session.employee_id === current.employee_id);
-      if (!existingSession) {
-        acc.push(current);
+    console.log('Raw test sessions:', data?.map(s => ({ id: s.id, employee_id: s.employee_id, completed: s.completed })));
+    
+    // Группируем сессии по employee_id (это наиболее надежный способ определить уникальные тесты)
+    const latestSessionByEmployee: { [key: string]: TestSession } = {};
+    
+    data?.forEach(session => {
+      const employeeId = session.employee_id;
+      
+      // Если у нас уже есть сессия для этого сотрудника
+      if (latestSessionByEmployee[employeeId]) {
+        const existingDate = new Date(latestSessionByEmployee[employeeId].created_at).getTime();
+        const currentDate = new Date(session.created_at).getTime();
+        
+        // Обновляем только если текущая сессия новее
+        if (currentDate > existingDate) {
+          latestSessionByEmployee[employeeId] = session;
+        }
+      } else {
+        // Если это первая сессия для данного сотрудника
+        latestSessionByEmployee[employeeId] = session;
       }
-      return acc;
-    }, []) || [];
-
-    console.log('Unique test sessions:', uniqueSessions);
+    });
+    
+    // Преобразуем объект обратно в массив и сортируем по времени создания
+    const uniqueSessions = Object.values(latestSessionByEmployee)
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    
+    console.log('Filtered test sessions:', uniqueSessions.map(s => ({ id: s.id, employee_id: s.employee_id, completed: s.completed })));
+    
     return uniqueSessions;
   } catch (error) {
     console.error('Error in getRecentTestSessions:', error);

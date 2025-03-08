@@ -56,18 +56,8 @@ function Dashboard() {
           }
         });
         
-        // Сортируем сессии: сначала активные, потом завершенные
-        const sortedSessions = sessions.sort((a, b) => {
-          if (a.completed === b.completed) {
-            // Если статусы одинаковые, сортируем по времени создания (новые сверху)
-            return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-          }
-          // Активные сессии показываем первыми
-          return a.completed ? 1 : -1;
-        });
-        
-        // Добавляем недостающие поля для отображения в таблице
-        const displaySessions: SessionDisplay[] = sortedSessions.map(session => ({
+        // Используем сессии напрямую, так как сортировка уже выполнена в getRecentTestSessions
+        const displaySessions: SessionDisplay[] = sessions.map(session => ({
           ...session,
           character_name: getCharacterNameBySessionNumber(session.id),
           messages_count: getMessagesCount(session)
@@ -273,13 +263,6 @@ function Dashboard() {
         </div>
         <div className="flex gap-3">
           <button
-            onClick={handleViewAllTestResults}
-            className="flex items-center gap-2 px-4 py-2 bg-[#2d2d2d] border border-[#3d3d3d] rounded-lg hover:bg-[#3d3d3d] transition-colors"
-          >
-            <Target className="w-5 h-5 text-purple-500" />
-            <span>Результаты тестов</span>
-          </button>
-          <button
             onClick={handleNewEmployeeClick}
             className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-pink-500 to-purple-500 rounded-lg text-white font-semibold hover:opacity-90 transition-opacity"
           >
@@ -297,7 +280,6 @@ function Dashboard() {
             Недавние тестирования
           </h2>
           <button 
-            onClick={handleViewAllTestResults}
             className="text-sm text-purple-400 hover:text-purple-300 transition-colors"
           >
             Смотреть все
@@ -319,7 +301,6 @@ function Dashboard() {
               <thead>
                 <tr className="text-left text-gray-400 border-b border-[#3d3d3d]">
                   <th className="pb-3 pl-4">Пользователь</th>
-                  <th className="pb-3">ФИО соискателя</th>
                   <th className="pb-3">Дата/Время</th>
                   <th className="pb-3">Сообщения</th>
                   <th className="pb-3">Статус</th>
@@ -355,14 +336,6 @@ function Dashboard() {
                               Участник тестирования
                             </div>
                           </div>
-                        </div>
-                      </td>
-                      <td className="py-4">
-                        <div className="font-medium">
-                          {session.character_name}
-                        </div>
-                        <div className="text-xs text-gray-400">
-                          Тестовый персонаж
                         </div>
                       </td>
                       <td className="py-4">
