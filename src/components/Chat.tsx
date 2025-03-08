@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, ChangeEvent } from 'react';
-import { MessageCircle, Send, Menu, Bell, Settings, Search, Heart, Image, AtSign, DollarSign, Timer, Bot, AlertCircle, Info, Check, CheckCheck, X, ImagePlus, Upload, Trash2, ExternalLink, Eye } from 'lucide-react';
+import { MessageCircle, Send, Menu, Bell, Settings, Search, Heart, Image, AtSign, DollarSign, Timer, Bot, AlertCircle, Info, Check, CheckCheck, X, ImagePlus, Upload, Trash2, ExternalLink, Eye, Loader, LogOut } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { generateGrokResponse } from '../services/grok';
+import { generateGrokResponse, analyzeDialogs } from '../services/grok';
 import { userPrompts, getPromptSummary } from '../data/userPrompts';
 import PromptModal from './PromptModal';
 import { 
@@ -12,7 +12,10 @@ import {
   getEmployees,
   getTestSessionChats,
   getTestSession,
-  TestSession
+  TestSession,
+  generateAnalysisPrompt,
+  saveTestResult,
+  DialogAnalysisResult
 } from '../lib/supabase';
 
 // Типы для использования в Chat компоненте
@@ -126,7 +129,11 @@ function generateUUID() {
 function Chat() {
   const [message, setMessage] = useState('');
   const [selectedUser, setSelectedUser] = useState('Marcus');
-  const [timeRemaining, setTimeRemaining] = useState(60 * 60);
+  const [timeRemaining, setTimeRemaining] = useState(60);
+  const [showCongratulations, setShowCongratulations] = useState(false);
+  const [calculatingResults, setCalculatingResults] = useState(false);
+  const [analysisComplete, setAnalysisComplete] = useState(false);
+  const [analysisResult, setAnalysisResult] = useState<DialogAnalysisResult | null>(null);
   const navigate = useNavigate();
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -465,29 +472,37 @@ function Chat() {
     updateCharacter();
   }, [selectedUser, testSessionId]);
 
-  // Обновляем таймер и завершаем сессию при истечении времени
+  // Настраиваем таймер для автоматического окончания тестирования
   useEffect(() => {
+    if (timeRemaining <= 0) return; // Если время уже истекло, не запускаем таймер
+    
     const timer = setInterval(() => {
-      setTimeRemaining((prevTime) => {
+      setTimeRemaining(prevTime => {
         if (prevTime <= 1) {
           clearInterval(timer);
-          // Завершаем сессию тестирования
-          const storedSessionId = sessionStorage.getItem('currentTestSessionId');
-          if (storedSessionId) {
+          // Показываем окно поздравления и запускаем расчет результатов
+          setShowCongratulations(true);
+          setCalculatingResults(true);
+          
+          // Завершаем тестовую сессию
+          if (testSessionId) {
             const completeSession = async () => {
               try {
-                await completeTestSession(storedSessionId);
+                await completeTestSession(testSessionId);
                 console.log('Test session completed on time expiration');
+                
+                // Запускаем анализ диалогов и сохранение результатов
+                await analyzeDialogsAndSaveResults(testSessionId);
+                
               } catch (error) {
                 console.error('Error completing test session:', error);
+                setCalculatingResults(false);
               }
             };
             
             completeSession();
           }
           
-          alert('Время тестирования истекло!');
-          navigate('/');
           return 0;
         }
         return prevTime - 1;
@@ -495,7 +510,7 @@ function Chat() {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [navigate]);
+  }, [navigate, testSessionId]);
 
   // Обновляем сессию после добавления каждого сообщения
   useEffect(() => {
@@ -1140,8 +1155,202 @@ function Chat() {
     }
   }, [chatHistories]);
 
+  // Обработчик для кнопки "До свидания"
+  const handleGoodbye = () => {
+    if (testSessionId) {
+      navigate(`/test-results/${testSessionId}`);
+    } else {
+      navigate('/admin');
+    }
+  };
+
+  // Обработчик для анализа диалогов и сохранения результатов
+  const analyzeDialogsAndSaveResults = async (sessionId: string) => {
+    try {
+      console.log('Starting dialog analysis for session:', sessionId);
+      
+      // Получаем информацию о сессии для привязки к сотруднику
+      const session = await getTestSession(sessionId);
+      
+      if (!session) {
+        throw new Error('Session not found');
+      }
+      
+      // Генерируем промпт для анализа
+      const prompt = await generateAnalysisPrompt(sessionId);
+      console.log('Analysis prompt generated, length:', prompt.length);
+      
+      // Отправляем на анализ в Grok
+      console.log('Sending prompt to Grok API...');
+      const analysisResponse = await analyzeDialogs(prompt);
+      console.log('Got response from Grok API:', analysisResponse);
+      
+      if (analysisResponse.error) {
+        console.error('Analysis API error:', analysisResponse.error);
+        throw new Error(`Analysis failed: ${analysisResponse.error}`);
+      }
+      
+      console.log('Raw analysis response:', analysisResponse);
+      
+      let result: DialogAnalysisResult | null = null;
+      
+      // Извлекаем результат анализа
+      if (analysisResponse.analysisResult) {
+        console.log('Using pre-parsed analysis result');
+        result = analysisResponse.analysisResult;
+      } else if (typeof analysisResponse.response === 'string') {
+        console.log('Trying to parse from response string, length:', analysisResponse.response.length);
+        try {
+          // Пытаемся извлечь JSON из текстового ответа
+          const jsonMatch = analysisResponse.response.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            const jsonStr = jsonMatch[0];
+            console.log('Extracted JSON string:', jsonStr.substring(0, 100) + '...');
+            result = JSON.parse(jsonStr);
+            console.log('Successfully parsed JSON result');
+          } else {
+            console.warn('No JSON pattern found in response');
+          }
+        } catch (parseError) {
+          console.error('Error parsing analysis response:', parseError);
+        }
+      } else {
+        console.warn('Response does not contain expected data structure:', analysisResponse);
+      }
+      
+      // Если удалось получить результат анализа
+      if (result) {
+        // Сохраняем результат в состоянии
+        setAnalysisResult(result);
+        setAnalysisComplete(true);
+        
+        // Рассчитываем общий балл (среднее значение по всем метрикам)
+        const metrics = result.dialog_analysis.metrics;
+        const scores = [
+          metrics.engagement.score,
+          metrics.charm_and_tone.score,
+          metrics.creativity.score,
+          metrics.adaptability.score,
+          metrics.self_promotion.score
+        ];
+        
+        const overallScore = scores.reduce((sum, score) => sum + score, 0) / scores.length;
+        
+        // Сохраняем результат в базе данных
+        console.log('Saving analysis results to database...');
+        await saveTestResult({
+          test_session_id: sessionId,
+          employee_id: session.employee_id,
+          raw_prompt: prompt,
+          analysis_result: result,
+          engagement_score: metrics.engagement.score,
+          charm_tone_score: metrics.charm_and_tone.score,
+          creativity_score: metrics.creativity.score,
+          adaptability_score: metrics.adaptability.score,
+          self_promotion_score: metrics.self_promotion.score,
+          overall_score: overallScore
+        });
+        
+        console.log('Analysis completed and results saved');
+      } else {
+        console.error('No valid analysis result found in response');
+        
+        // Даже если анализ не удался, сохраняем базовую запись в БД
+        try {
+          console.log('Saving basic test result without analysis data');
+          await saveTestResult({
+            test_session_id: sessionId,
+            employee_id: session.employee_id,
+            raw_prompt: prompt
+          });
+          console.log('Created basic test result record without analysis data');
+        } catch (saveError) {
+          console.error('Failed to save basic test result:', saveError);
+        }
+      }
+    } catch (error) {
+      console.error('Error in analyzeDialogsAndSaveResults:', error);
+    } finally {
+      // В любом случае завершаем расчет результатов
+      setCalculatingResults(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#1a1a1a] text-gray-100">
+      {/* Окно поздравления */}
+      {showCongratulations && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70">
+          <div className="bg-[#2d2d2d] rounded-xl border border-pink-500/20 p-8 max-w-md w-full shadow-2xl transform animate-scale-in-center">
+            <div className="text-center">
+              <h2 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-purple-500 mb-4">
+                Поздравляем!
+              </h2>
+              <p className="text-gray-300 text-lg mb-6">
+                Вы успешно завершили тестирование коммуникативных навыков.
+              </p>
+              
+              {calculatingResults ? (
+                <div className="flex flex-col items-center justify-center">
+                  <Loader className="w-12 h-12 text-pink-500 animate-spin mb-4" />
+                  <p className="text-gray-400">Подсчитываем результаты...</p>
+                  <p className="text-gray-400 text-sm mt-2">Это займет несколько секунд</p>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center">
+                  <Check className="w-16 h-16 text-green-500 mb-4" />
+                  <p className="text-gray-400 mb-2">Результаты готовы!</p>
+                  <div className="bg-[#1a1a1a] rounded-lg p-4 mb-6 w-full">
+                    <div className="flex justify-between mb-2">
+                      <span className="text-gray-400">Сообщений отправлено:</span>
+                      <span className="text-pink-500 font-semibold">
+                        {Object.values(chatHistories).reduce(
+                          (total, messages) => total + messages.filter(msg => msg.isOwn).length, 
+                          0
+                        )}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Ответов получено:</span>
+                      <span className="text-purple-500 font-semibold">
+                        {Object.values(chatHistories).reduce(
+                          (total, messages) => total + messages.filter(msg => !msg.isOwn).length, 
+                          0
+                        )}
+                      </span>
+                    </div>
+                    {analysisResult && (
+                      <>
+                        <div className="w-full h-px bg-gray-700 my-3"></div>
+                        <div className="flex justify-between mb-2">
+                          <span className="text-gray-400">Общий рейтинг:</span>
+                          <span className="text-green-500 font-semibold">
+                            {((
+                              analysisResult.dialog_analysis.metrics.engagement.score +
+                              analysisResult.dialog_analysis.metrics.charm_and_tone.score +
+                              analysisResult.dialog_analysis.metrics.creativity.score +
+                              analysisResult.dialog_analysis.metrics.adaptability.score +
+                              analysisResult.dialog_analysis.metrics.self_promotion.score
+                            ) / 5).toFixed(1)} / 5
+                          </span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  <button
+                    onClick={handleGoodbye}
+                    className="px-8 py-3 bg-gradient-to-r from-pink-500 to-purple-500 rounded-lg text-white font-semibold hover:opacity-90 transition-opacity flex items-center gap-2"
+                  >
+                    <LogOut className="w-5 h-5" />
+                    До свидания
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+      
       <nav className="bg-[#2d2d2d] border-b border-[#3d3d3d] px-4 py-3 flex items-center justify-between">
         <div className="flex items-center space-x-4">
           <Menu className="w-6 h-6 text-pink-500" />

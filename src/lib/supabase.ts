@@ -55,6 +55,53 @@ export interface TestSession {
   chats?: Chat[];
 }
 
+// Интерфейс для результатов анализа диалогов
+export interface DialogAnalysisResult {
+  dialog_analysis: {
+    metrics: {
+      engagement: {
+        score: number;
+        verdict: string;
+      };
+      charm_and_tone: {
+        score: number;
+        verdict: string;
+      };
+      creativity: {
+        score: number;
+        verdict: string;
+      };
+      adaptability: {
+        score: number;
+        verdict: string;
+      };
+      self_promotion: {
+        score: number;
+        verdict: string;
+      };
+    };
+    overall_conclusion: string;
+    result_summary?: string;
+  };
+}
+
+// Интерфейс для результатов тестирования
+export interface TestResult {
+  id?: string;
+  test_session_id: string;
+  employee_id: string;
+  raw_prompt?: string;
+  analysis_result?: DialogAnalysisResult;
+  engagement_score?: number;
+  charm_tone_score?: number;
+  creativity_score?: number;
+  adaptability_score?: number;
+  self_promotion_score?: number;
+  overall_score?: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
 // Employee functions
 export async function createEmployee(employee: Omit<Employee, 'id' | 'created_at' | 'updated_at'>) {
   const { data, error } = await supabase
@@ -602,6 +649,237 @@ export async function completeAllEmployeeTestSessions(employeeId: string): Promi
     console.log(`Successfully completed ${activeSessions.length} sessions for employee:`, employeeId);
   } catch (error) {
     console.error('Error in completeAllEmployeeTestSessions:', error);
+    throw error;
+  }
+}
+
+/**
+ * Сохраняет результаты тестирования в базу данных
+ */
+export async function saveTestResult(testResult: Omit<TestResult, 'id' | 'created_at' | 'updated_at'>): Promise<TestResult> {
+  try {
+    console.log('Checking for existing test result:', testResult.test_session_id);
+    
+    // Проверяем, существуют ли уже результаты для этой сессии
+    const { data: existingResults, error: checkError } = await supabase
+      .from('test_results')
+      .select('id')
+      .eq('test_session_id', testResult.test_session_id)
+      .limit(1);
+      
+    if (checkError) {
+      console.error('Error checking existing results:', checkError);
+      // Продолжаем выполнение, даже если произошла ошибка при проверке
+    } else if (existingResults && existingResults.length > 0) {
+      console.log('Found existing result, updating instead of creating new:', existingResults[0].id);
+      
+      // Обновляем существующую запись
+      const { data: updatedData, error: updateError } = await supabase
+        .from('test_results')
+        .update({
+          ...testResult,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', existingResults[0].id)
+        .select()
+        .single();
+        
+      if (updateError) {
+        console.error('Error updating test result:', updateError);
+        throw updateError;
+      }
+      
+      console.log('Test result updated successfully:', updatedData);
+      return updatedData;
+    }
+    
+    // Если результат не найден, создаем новый
+    const { data, error } = await supabase
+      .from('test_results')
+      .insert([testResult])
+      .select()
+      .single();
+      
+    if (error) {
+      console.error('Error saving test result:', error);
+      throw error;
+    }
+    
+    console.log('New test result saved successfully:', data);
+    return data;
+  } catch (error) {
+    console.error('Error in saveTestResult:', error);
+    throw error;
+  }
+}
+
+/**
+ * Получает результаты тестирования для сессии
+ */
+export async function getTestResultForSession(sessionId: string): Promise<TestResult | null> {
+  try {
+    console.log('Fetching test result for session:', sessionId);
+    
+    const { data, error } = await supabase
+      .from('test_results')
+      .select('*')
+      .eq('test_session_id', sessionId)
+      .single();
+      
+    if (error) {
+      if (error.code === 'PGRST116') {
+        // Результат не найден
+        console.log('No test result found for session:', sessionId);
+        return null;
+      }
+      console.error('Error fetching test result:', error);
+      throw error;
+    }
+    
+    console.log('Test result fetched successfully:', data);
+    return data;
+  } catch (error) {
+    console.error('Error in getTestResultForSession:', error);
+    throw error;
+  }
+}
+
+/**
+ * Получает все результаты тестирования для сотрудника
+ */
+export async function getTestResultsForEmployee(employeeId: string): Promise<TestResult[]> {
+  try {
+    console.log('Fetching test results for employee:', employeeId);
+    
+    const { data, error } = await supabase
+      .from('test_results')
+      .select('*')
+      .eq('employee_id', employeeId)
+      .order('created_at', { ascending: false });
+      
+    if (error) {
+      console.error('Error fetching test results:', error);
+      throw error;
+    }
+    
+    console.log(`Fetched ${data?.length || 0} test results for employee:`, employeeId);
+    return data || [];
+  } catch (error) {
+    console.error('Error in getTestResultsForEmployee:', error);
+    throw error;
+  }
+}
+
+/**
+ * Собирает все сообщения из чатов сессии в единый промпт
+ */
+export async function generateAnalysisPrompt(sessionId: string): Promise<string> {
+  try {
+    console.log('Generating analysis prompt for session:', sessionId);
+    
+    // Получаем все чаты для сессии
+    const chats = await getTestSessionChats(sessionId);
+    
+    // Получаем информацию о сессии
+    const session = await getTestSession(sessionId);
+    
+    if (!chats || chats.length === 0) {
+      throw new Error('No chats found for session');
+    }
+    
+    // Формируем заголовок промпта
+    const promptHeader = `Ты — Grok 3, созданный xAI. Я предоставлю тебе текстовый диалог между тестируемой моделью (соискателем на роль администратора моей страницы OnlyFans) и AI-клиентом OnlyFans. Твоя задача — проанализировать диалог и оценить модель по следующим 5 критериям:
+
+Вовлеченность (Engagement): Насколько активно модель поддерживает интерес клиента, отвечает ли вовремя и удерживает ли внимание.
+Обаяние и тон (Charm and Tone): Насколько модель дружелюбна, привлекательна и использует ли подходящий тон общения.
+Креативность (Creativity): Насколько модель предлагает оригинальные идеи, разнообразит общение и избегает шаблонности.
+Адаптивность (Adaptability): Насколько модель гибко подстраивается под настроение и запросы клиента.
+Умение продавать себя (Self-Promotion): Насколько эффективно модель подчеркивает свои сильные стороны и вызывает желание продолжить общение.
+
+Для каждого критерия:
+Выставь оценку от 0 до 5 (где 0 — минимально, 5 — идеально).
+Дай подробный вердикт (комментарий), объясняющий оценку, включая сильные стороны и области для улучшения.
+
+СТРОГО ОТВЕЧАЙ ТОЛЬКО В JSON ФОРМАТЕ, БЕЗ ДОПОЛНИТЕЛЬНОГО ТЕКСТА ДО ИЛИ ПОСЛЕ JSON.
+
+Предоставь результат анализа в формате JSON:
+
+{
+  "dialog_analysis": {
+    "metrics": {
+      "engagement": {
+        "score": ,
+        "verdict": ""
+      },
+      "charm_and_tone": {
+        "score": ,
+        "verdict": ""
+      },
+      "creativity": {
+        "score": ,
+        "verdict": ""
+      },
+      "adaptability": {
+        "score": ,
+        "verdict": ""
+      },
+      "self_promotion": {
+        "score": ,
+        "verdict": ""
+      }
+    },
+    "overall_conclusion": "",
+    "result_summary": ""
+  }
+}
+
+"result_summary" - это краткое (до 200 слов) резюме результатов анализа, включающее общую оценку соискателя, его основные сильные стороны и рекомендации по улучшению. Этот текст будет показан пользователю как итоговый вывод анализа.
+
+Вот диалоги для анализа:
+`;
+    
+    // Формируем части промпта из каждого чата
+    const chatPrompts = chats.map(chat => {
+      const chatNumber = chat.chat_number;
+      let characterType = '';
+      
+      switch(chatNumber) {
+        case 1:
+          characterType = 'Страстный клиент (Marcus)';
+          break;
+        case 2:
+          characterType = 'Капризный клиент (Shrek)';
+          break;
+        case 3:
+          characterType = 'Экономный клиент, торгующийся о цене (Olivia)';
+          break;
+        case 4:
+          characterType = 'Провокационный клиент, проверяющий границы (Ava)';
+          break;
+        default:
+          characterType = `Клиент ${chatNumber}`;
+      }
+      
+      const messages = chat.messages || [];
+      if (messages.length === 0) {
+        return `\n\n--- Чат ${chatNumber} (${characterType}) ---\nНет сообщений`;
+      }
+      
+      const formattedMessages = messages.map(msg => {
+        const roleLabel = msg.isOwn ? 'Соискатель' : `AI-клиент (${characterType})`;
+        return `${roleLabel}: ${msg.content}`;
+      }).join('\n');
+      
+      return `\n\n--- Чат ${chatNumber} (${characterType}) ---\n${formattedMessages}`;
+    }).join('');
+    
+    // Собираем полный промпт
+    const fullPrompt = promptHeader + chatPrompts;
+    
+    console.log('Analysis prompt generated successfully, length:', fullPrompt.length);
+    return fullPrompt;
+  } catch (error) {
+    console.error('Error generating analysis prompt:', error);
     throw error;
   }
 }
