@@ -10,7 +10,8 @@ import {
   MessageCircle, 
   Star,
   CheckCircle,
-  Info
+  Info,
+  DollarSign
 } from 'lucide-react';
 import { 
   getTestResultForSession, 
@@ -77,7 +78,8 @@ function TestResults() {
       metrics.charm_and_tone.score,
       metrics.creativity.score,
       metrics.adaptability.score,
-      metrics.self_promotion.score
+      metrics.self_promotion.score,
+      metrics.pricing_policy?.score || 0 // Добавляем ценовую политику, если она есть
     ];
     
     // Рассчитываем среднее значение
@@ -271,6 +273,56 @@ function TestResults() {
                   </div>
                   <p className="text-gray-400 text-sm">{analysis.metrics.self_promotion.verdict}</p>
                 </div>
+
+                {/* Ценовая политика */}
+                {analysis.metrics.pricing_policy && (
+                  <div className="bg-[#1a1a1a] rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <DollarSign className="w-5 h-5 text-pink-500" />
+                        <h3 className="font-semibold">Ценовая политика</h3>
+                      </div>
+                      <span className={`font-bold ${getScoreColor(analysis.metrics.pricing_policy.score)}`}>
+                        {analysis.metrics.pricing_policy.score}/5
+                      </span>
+                    </div>
+                    <p className="text-gray-400 text-sm">{analysis.metrics.pricing_policy.verdict}</p>
+                    
+                    {/* Отображение сильных сторон и областей улучшения, если они есть */}
+                    {(analysis.metrics.pricing_policy.strengths && analysis.metrics.pricing_policy.strengths.length > 0) || 
+                     (analysis.metrics.pricing_policy.improvements && analysis.metrics.pricing_policy.improvements.length > 0) ? (
+                      <div className="mt-3 border-t border-[#2d2d2d] pt-3">
+                        {analysis.metrics.pricing_policy.strengths && analysis.metrics.pricing_policy.strengths.length > 0 && (
+                          <div className="mt-2">
+                            <div className="flex items-center gap-2 mb-1">
+                              <CheckCircle className="w-4 h-4 text-green-400" />
+                              <span className="text-green-400 text-xs font-semibold">Сильные стороны</span>
+                            </div>
+                            <ul className="text-gray-400 text-sm ml-6 space-y-1 list-disc">
+                              {analysis.metrics.pricing_policy.strengths.map((strength, idx) => (
+                                <li key={idx}>{strength}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        
+                        {analysis.metrics.pricing_policy.improvements && analysis.metrics.pricing_policy.improvements.length > 0 && (
+                          <div className="mt-2">
+                            <div className="flex items-center gap-2 mb-1">
+                              <Info className="w-4 h-4 text-yellow-400" />
+                              <span className="text-yellow-400 text-xs font-semibold">Требуют улучшения</span>
+                            </div>
+                            <ul className="text-gray-400 text-sm ml-6 space-y-1 list-disc">
+                              {analysis.metrics.pricing_policy.improvements.map((improvement, idx) => (
+                                <li key={idx}>{improvement}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -304,7 +356,7 @@ function TestResults() {
                 <div className="flex justify-between">
                   <span className="text-gray-400">ID сессии:</span>
                   <span className="text-gray-300">{testResult?.test_session_id || 'Недоступно'}</span>
-            </div>
+                </div>
                 
                 <div className="flex justify-between">
                   <span className="text-gray-400">Дата проведения:</span>
@@ -314,9 +366,9 @@ function TestResults() {
                       : 'Недоступно'
                     }
                   </span>
-                      </div>
-                    </div>
-                  </div>
+                </div>
+              </div>
+            </div>
 
             <button
               onClick={handleBackClick}
@@ -325,8 +377,8 @@ function TestResults() {
               <ArrowLeft className="w-5 h-5" />
               Вернуться на главную
             </button>
-            </div>
-          )}
+          </div>
+        )}
       </div>
     </div>
   );

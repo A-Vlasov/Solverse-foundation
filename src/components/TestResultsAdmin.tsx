@@ -74,7 +74,7 @@ const debug = (sessionId: string, chats: Chat[], testResult: TestResult | null) 
   console.log('=== КОНЕЦ ДИАГНОСТИКИ ===');
 };
 
-function TestResults() {
+function TestResultsAdmin() {
   const navigate = useNavigate();
   const location = useLocation();
   const { sessionId: paramSessionId } = useParams<{ sessionId: string }>();
@@ -240,11 +240,14 @@ function TestResults() {
       metrics.charm_and_tone.score,
       metrics.creativity.score,
       metrics.adaptability.score,
-      metrics.self_promotion.score
+      metrics.self_promotion.score,
+      metrics.pricing_policy?.score || 0 // Добавляем ценовую политику, если она есть
     ];
     
-    const sum = scores.reduce((acc, score) => acc + score, 0);
-    return sum / scores.length;
+    // Рассчитываем среднее значение
+    const validScores = scores.filter(score => score > 0);
+    const sum = validScores.reduce((acc, score) => acc + score, 0);
+    return validScores.length > 0 ? sum / validScores.length : 0;
   };
 
   // Animation variants
@@ -412,6 +415,17 @@ function TestResults() {
                     color: 'pink'
                   }
                 ],
+                // Обновляем данные о ценовой политике, если они доступны
+                ...(analysis.metrics.pricing_policy ? {
+                  pricingEvaluation: {
+                    score: analysis.metrics.pricing_policy.score,
+                    level: analysis.metrics.pricing_policy.score >= 4 ? 'Высокая' : 
+                           analysis.metrics.pricing_policy.score >= 3 ? 'Средняя' : 'Низкая',
+                    strengths: analysis.metrics.pricing_policy.strengths || [],
+                    weaknesses: analysis.metrics.pricing_policy.improvements || [],
+                    details: analysis.metrics.pricing_policy.verdict
+                  }
+                } : {}),
                 recommendations: analysis.result_summary ? [analysis.result_summary] : ['Нет рекомендаций']
               }));
             } else {
@@ -519,6 +533,17 @@ function TestResults() {
                 color: 'pink'
               }
             ],
+            // Обновляем данные о ценовой политике, если они доступны
+            ...(analysis.metrics.pricing_policy ? {
+              pricingEvaluation: {
+                score: analysis.metrics.pricing_policy.score,
+                level: analysis.metrics.pricing_policy.score >= 4 ? 'Высокая' : 
+                       analysis.metrics.pricing_policy.score >= 3 ? 'Средняя' : 'Низкая',
+                strengths: analysis.metrics.pricing_policy.strengths || [],
+                weaknesses: analysis.metrics.pricing_policy.improvements || [],
+                details: analysis.metrics.pricing_policy.verdict
+              }
+            } : {}),
             recommendations: analysis.result_summary ? [analysis.result_summary] : ['Нет рекомендаций']
           }));
         }
@@ -1096,4 +1121,4 @@ function TestResults() {
   );
 }
 
-export default TestResults;
+export default TestResultsAdmin;

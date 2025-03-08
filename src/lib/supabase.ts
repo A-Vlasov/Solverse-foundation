@@ -79,6 +79,12 @@ export interface DialogAnalysisResult {
         score: number;
         verdict: string;
       };
+      pricing_policy: {
+        score: number;
+        verdict: string;
+        strengths?: string[];
+        improvements?: string[];
+      };
     };
     overall_conclusion: string;
     result_summary?: string;
@@ -97,6 +103,7 @@ export interface TestResult {
   creativity_score?: number;
   adaptability_score?: number;
   self_promotion_score?: number;
+  pricing_policy_score?: number;
   overall_score?: number;
   created_at?: string;
   updated_at?: string;
@@ -788,17 +795,21 @@ export async function generateAnalysisPrompt(sessionId: string): Promise<string>
     }
     
     // Формируем заголовок промпта
-    const promptHeader = `Ты — Grok 3, созданный xAI. Я предоставлю тебе текстовый диалог между тестируемой моделью (соискателем на роль администратора моей страницы OnlyFans) и AI-клиентом OnlyFans. Твоя задача — проанализировать диалог и оценить модель по следующим 5 критериям:
+    const promptHeader = `Ты — Grok 3, созданный xAI. Я предоставлю тебе текстовый диалог между тестируемой моделью (соискателем на роль администратора моей страницы OnlyFans) и AI-клиентом OnlyFans. Твоя задача — проанализировать диалог и оценить модель по следующим 6 критериям:
 
 Вовлеченность (Engagement): Насколько активно модель поддерживает интерес клиента, отвечает ли вовремя и удерживает ли внимание.
 Обаяние и тон (Charm and Tone): Насколько модель дружелюбна, привлекательна и использует ли подходящий тон общения.
 Креативность (Creativity): Насколько модель предлагает оригинальные идеи, разнообразит общение и избегает шаблонности.
 Адаптивность (Adaptability): Насколько модель гибко подстраивается под настроение и запросы клиента.
 Умение продавать себя (Self-Promotion): Насколько эффективно модель подчеркивает свои сильные стороны и вызывает желание продолжить общение.
+Ценовая политика (Pricing Policy): Насколько эффективно модель управляет вопросами цены, обосновывает ценность своих услуг и работает с возражениями по цене.
 
 Для каждого критерия:
 Выставь оценку от 0 до 5 (где 0 — минимально, 5 — идеально).
 Дай подробный вердикт (комментарий), объясняющий оценку, включая сильные стороны и области для улучшения.
+
+Для критерия "Ценовая политика" дополнительно:
+Предоставь список сильных сторон (strengths) и областей, требующих улучшения (improvements).
 
 СТРОГО ОТВЕЧАЙ ТОЛЬКО В JSON ФОРМАТЕ, БЕЗ ДОПОЛНИТЕЛЬНОГО ТЕКСТА ДО ИЛИ ПОСЛЕ JSON.
 
@@ -826,6 +837,12 @@ export async function generateAnalysisPrompt(sessionId: string): Promise<string>
       "self_promotion": {
         "score": ,
         "verdict": ""
+      },
+      "pricing_policy": {
+        "score": ,
+        "verdict": "",
+        "strengths": [],
+        "improvements": []
       }
     },
     "overall_conclusion": "",

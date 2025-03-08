@@ -1231,7 +1231,8 @@ function Chat() {
           metrics.charm_and_tone.score,
           metrics.creativity.score,
           metrics.adaptability.score,
-          metrics.self_promotion.score
+          metrics.self_promotion.score,
+          metrics.pricing_policy.score // Включаем в расчёт, но не сохраняем в БД
         ];
         
         const overallScore = scores.reduce((sum, score) => sum + score, 0) / scores.length;
@@ -1248,6 +1249,7 @@ function Chat() {
           creativity_score: metrics.creativity.score,
           adaptability_score: metrics.adaptability.score,
           self_promotion_score: metrics.self_promotion.score,
+          // pricing_policy_score не сохраняем, так как колонки нет в БД
           overall_score: overallScore
         });
         

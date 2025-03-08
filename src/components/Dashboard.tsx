@@ -216,11 +216,16 @@ function Dashboard() {
   };
 
   const handleViewTestResults = (employeeId?: string) => {
-    navigate('/admin/test-results', { 
-      state: { 
-        employeeId: employeeId || recentTestSessions[0]?.employee_id 
-      } 
-    });
+    // Получаем ID сессии из первой (последней) доступной сессии сотрудника
+    const targetEmployeeId = employeeId || recentTestSessions[0]?.employee_id;
+    const employeeSession = recentTestSessions.find(session => session.employee_id === targetEmployeeId);
+    
+    if (employeeSession) {
+      navigate(`/admin/session/${employeeSession.id}`);
+    } else {
+      console.error('Не удалось найти сессию для сотрудника', targetEmployeeId);
+      // Можно добавить всплывающее уведомление о том, что сессия не найдена
+    }
   };
 
   const handleViewAllTestResults = () => {
@@ -228,8 +233,15 @@ function Dashboard() {
   };
 
   const handleViewEmployeeTestResults = (id: string) => {
-    // Navigate to test results page with the employee ID
-    navigate('/admin/test-results', { state: { employeeId: id } });
+    // Ищем последнюю тестовую сессию для этого сотрудника
+    const employeeSession = recentTestSessions.find(session => session.employee_id === id);
+    
+    if (employeeSession) {
+      navigate(`/admin/session/${employeeSession.id}`);
+    } else {
+      console.error('Не удалось найти сессию для сотрудника', id);
+      // Можно добавить всплывающее уведомление о том, что сессия не найдена
+    }
   };
 
   // Function to get color class based on score

@@ -257,7 +257,8 @@ export const analyzeDialogs = async (prompt: string): Promise<any> => {
                 charm_and_tone: { score: 0, verdict: "" },
                 creativity: { score: 0, verdict: "" },
                 adaptability: { score: 0, verdict: "" },
-                self_promotion: { score: 0, verdict: "" }
+                self_promotion: { score: 0, verdict: "" },
+                pricing_policy: { score: 0, verdict: "", strengths: [], improvements: [] }
               },
               overall_conclusion: "Анализ выполнен на основе извлеченных данных из текстового ответа."
             }
@@ -276,11 +277,25 @@ export const analyzeDialogs = async (prompt: string): Promise<any> => {
               result.dialog_analysis.metrics.adaptability = { score, verdict };
             } else if (key.includes('promot') || key.includes('self')) {
               result.dialog_analysis.metrics.self_promotion = { score, verdict };
+            } else if (key.includes('pric') || key.includes('policy')) {
+              result.dialog_analysis.metrics.pricing_policy = { 
+                score, 
+                verdict, 
+                strengths: ["Извлечено из текста"], 
+                improvements: ["Требуется детальный анализ"] 
+              };
             }
           }
           
           // Заполняем недостающие метрики средним значением
-          const metricNames = ['engagement', 'charm_and_tone', 'creativity', 'adaptability', 'self_promotion'] as const;
+          const metricNames = [
+            'engagement', 
+            'charm_and_tone', 
+            'creativity', 
+            'adaptability', 
+            'self_promotion',
+            'pricing_policy'
+          ] as const;
           const defaultVerdict = "Недостаточно данных для оценки.";
           const existingScores: number[] = [];
           
