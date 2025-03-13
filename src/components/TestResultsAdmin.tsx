@@ -35,9 +35,13 @@ import {
 } from '../lib/supabase';
 
 // Add new interfaces for chat data
-interface DialogueMessage extends ChatMessage {
+interface DialogueMessage {
   id: string;
-  role?: 'user' | 'assistant';  // Делаем роль опциональной, будем использовать isOwn
+  time: string;
+  content: string;
+  isOwn: boolean;
+  isRead?: boolean;
+  role?: 'user' | 'assistant';
 }
 
 interface Dialogue {
@@ -47,6 +51,47 @@ interface Dialogue {
   duration: string;
   score: number;
   messages: DialogueMessage[];
+}
+
+interface TestResultState {
+  candidateName: string;
+  overallScore: number;
+  date: string;
+  duration: string;
+  parameters: Array<{
+    name: string;
+    score: number;
+    comment: string;
+    icon: JSX.Element;
+    color: string;
+  }>;
+  recommendations: string[];
+  pricingEvaluation: {
+    score: number;
+    strengths: string[];
+    weaknesses: string[];
+  };
+  salesPerformance: {
+    introduction: {
+      score: number;
+      conversionRate: number;
+      strengths: string[];
+      weaknesses: string[];
+    };
+    warmup: {
+      score: number;
+      conversionRate: number;
+      strengths: string[];
+      weaknesses: string[];
+    };
+    sales: {
+      score: number;
+      conversionRate: number;
+      strengths: string[];
+      weaknesses: string[];
+    };
+  };
+  dialogues: Dialogue[];
 }
 
 // Добавляем функцию для диагностики
@@ -92,7 +137,40 @@ function TestResultsAdmin() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dialogues, setDialogues] = useState<Dialogue[]>([]);
-  const [testResult, setTestResult] = useState<TestResult | null>(null);
+  const [testResult, setTestResult] = useState<TestResultState>({
+    candidateName: '',
+    overallScore: 0,
+    date: '',
+    duration: '',
+    parameters: [],
+    recommendations: [],
+    pricingEvaluation: {
+      score: 0,
+      strengths: [],
+      weaknesses: []
+    },
+    salesPerformance: {
+      introduction: {
+        score: 0,
+        conversionRate: 0,
+        strengths: [],
+        weaknesses: []
+      },
+      warmup: {
+        score: 0,
+        conversionRate: 0,
+        strengths: [],
+        weaknesses: []
+      },
+      sales: {
+        score: 0,
+        conversionRate: 0,
+        strengths: [],
+        weaknesses: []
+      }
+    },
+    dialogues: []
+  });
 
   // Mock data - in a real app, this would come from an API or context
   const [testResults, setTestResults] = useState({
@@ -326,20 +404,21 @@ function TestResultsAdmin() {
                 // Массив имен персонажей
                 const characterNames = ['Marcus', 'Shrek', 'Olivia', 'Ava'];
                 
-                const newDialogues = chatHistory.map((chat, index) => ({
+                const newDialogues: Dialogue[] = chatHistory.map((chat, index) => ({
                   id: chat.id,
                   title: `Диалог с ${characterNames[chat.chat_number - 1] || 'Unknown'}`,
                   date: new Date(chat.created_at).toLocaleDateString(),
                   duration: '15 минут',
                   score: 85,
-                  messages: Array.isArray(chat.messages) ? chat.messages.map((msg, msgIndex) => ({
-                    ...msg,
+                  messages: Array.isArray(chat.messages) ? chat.messages.map((msg, msgIndex): DialogueMessage => ({
                     id: `msg-${msgIndex}`,
                     time: new Date(session.created_at).toLocaleTimeString('ru-RU', {
                       hour: '2-digit',
                       minute: '2-digit'
                     }),
-                    // Добавим role на основе isOwn для совместимости с обновлённым интерфейсом
+                    content: msg.content,
+                    isOwn: msg.isOwn,
+                    isRead: msg.isRead,
                     role: msg.isOwn ? 'user' : 'assistant'
                   })) : []
                 }));
@@ -614,9 +693,8 @@ function TestResultsAdmin() {
                 time: new Date(latestSession.created_at).toLocaleTimeString('ru-RU', {
                   hour: '2-digit',
                   minute: '2-digit'
-            }),
-            // Добавим role на основе isOwn для совместимости с обновлённым интерфейсом
-            role: msg.isOwn ? 'user' : 'assistant'
+                }),
+                role: msg.isOwn ? 'user' : 'assistant'
               }))
             }));
 
@@ -648,7 +726,7 @@ function TestResultsAdmin() {
         }
       } catch (err) {
         console.error('Error loading chat history:', err);
-      setError('Ошибка при загрузке истории чатов');
+    setError('Ошибка при загрузке истории чатов');
     }
   };
 
@@ -1088,27 +1166,40 @@ function TestResultsAdmin() {
                   </h4>
                   
                   <div className="space-y-4">
-                    {dialogues.find(d => d.id === selectedDialogue)?.messages?.length > 0 ? (
-                      dialogues.find(d => d.id === selectedDialogue)?.messages.map((message) => (
-                        <div
-                          key={message.id}
-                          className={`flex ${message.isOwn ? 'justify-end' : 'justify-start'}`}
-                        >
+                    {selectedDialogue && dialogues.find(d => d.id === selectedDialogue)?.messages?.length > 0 ? (
+                      dialogues.find(d => d.id === selectedDialogue)?.messages.map((message: DialogueMessage) => {
+                        const imageMatch = message.content.match(/\[Фото (\d+)\] \[(.*?)\]/);
+                        return (
                           <div
-                            className={`max-w-[80%] p-3 rounded-lg ${
-                              message.isOwn
-                                ? 'bg-purple-900 text-white rounded-tr-none' 
-                                : 'bg-[#2d2d2d] text-gray-200 rounded-tl-none'
-                            }`}
+                            key={message.id}
+                            className={`flex ${message.isOwn ? 'justify-end' : 'justify-start'}`}
                           >
-                            <div className="text-xs text-gray-400 mb-1 flex justify-between">
-                              <span>{message.isOwn ? 'Соискатель' : 'AI-клиент'}</span>
-                              <span>{message.time}</span>
-                            </div>
-                            <p>{message.content}</p>
+                            <div
+                              className={`max-w-[80%] p-3 rounded-lg ${
+                                message.isOwn
+                                  ? 'bg-purple-900 text-white rounded-tr-none' 
+                                  : 'bg-[#2d2d2d] text-gray-200 rounded-tl-none'
+                              }`}
+                            >
+                              <div className="text-xs text-gray-400 mb-1 flex justify-between">
+                                <span>{message.isOwn ? 'Соискатель' : 'AI-клиент'}</span>
+                                <span>{message.time}</span>
+                              </div>
+                              {imageMatch ? (
+                                <div className="mt-1 rounded-md overflow-hidden">
+                                  <img 
+                                    src={`/foto/${imageMatch[1]}.jpg`}
+                                    alt="Отправленное изображение" 
+                                    className="max-w-[200px] h-auto rounded-md border border-[#3d3d3d]"
+                                  />
+                                </div>
+                              ) : (
+                                <p>{message.content}</p>
+                              )}
                             </div>
                           </div>
-                      ))
+                        );
+                      })
                     ) : (
                       <div className="text-center py-8 text-gray-400">
                         <AlertCircle className="w-10 h-10 mx-auto mb-2 text-yellow-500" />
@@ -1116,7 +1207,7 @@ function TestResultsAdmin() {
                         <p className="text-sm mt-2">
                           Возможно, сессия ещё не начата или была прервана.
                         </p>
-                        </div>
+                      </div>
                     )}
                   </div>
                     </div>

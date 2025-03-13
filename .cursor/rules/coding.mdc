@@ -1,6 +1,6 @@
 ---
 description: How to write code
-globs: *
+globs: 
 alwaysApply: true
 ---
 # Coding pattern preferences

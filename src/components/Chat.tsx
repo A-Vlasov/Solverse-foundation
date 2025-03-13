@@ -61,6 +61,7 @@ interface CustomImage {
   url: string;
   thumbnail: string;
   description: string;
+  prompt: string;
 }
 
 // Add new interface for Grok conversation details
@@ -78,41 +79,173 @@ interface UserConversations {
 const preloadedImages = [
   {
     id: 'img1',
-    url: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?ixlib=rb-1.2.1&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1200&q=80',
-    thumbnail: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?ixlib=rb-1.2.1&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=300&q=80',
-    description: 'Горный пейзаж'
+    url: '/foto/1 (2).jpg',
+    thumbnail: '/foto/1 (2).jpg',
+    description: 'Фото 1',
+    prompt: 'Сексуальная блондинка в цветочном платье с обнаженным плечом позирует, закрывая рот пальцем, создавая соблазнительный и игривый образ.(фото для знакомства)'
   },
   {
     id: 'img2',
-    url: 'https://images.unsplash.com/photo-1501785888041-af3ef285b470?ixlib=rb-1.2.1&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1200&q=80',
-    thumbnail: 'https://images.unsplash.com/photo-1501785888041-af3ef285b470?ixlib=rb-1.2.1&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=300&q=80',
-    description: 'Морской закат'
+    url: '/foto/2.jpg',
+    thumbnail: '/foto/2.jpg',
+    description: 'Фото 2',
+    prompt: 'Блондинка в обтягивающем цветочном платье с открытым плечом соблазнительно позирует, подчеркивая свои изгибы.(фото для знакомства)'
   },
   {
     id: 'img3',
-    url: 'https://images.unsplash.com/photo-1470770841072-f978cf4d019e?ixlib=rb-1.2.1&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1200&q=80',
-    thumbnail: 'https://images.unsplash.com/photo-1470770841072-f978cf4d019e?ixlib=rb-1.2.1&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=300&q=80',
-    description: 'Озеро в горах'
+    url: '/foto/3.jpg',
+    thumbnail: '/foto/3.jpg',
+    description: 'Фото 3',
+    prompt: 'Блондинка в коротком цветочном платье соблазнительно сидит, закинув ногу на ногу, демонстрируя свои стройные ножки.(фото для знакомства)'
   },
   {
     id: 'img4',
-    url: 'https://images.unsplash.com/photo-1497449493050-aad1e7cad165?ixlib=rb-1.2.1&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1200&q=80',
-    thumbnail: 'https://images.unsplash.com/photo-1497449493050-aad1e7cad165?ixlib=rb-1.2.1&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=300&q=80',
-    description: 'Цветущий луг'
+    url: '/foto/4.jpg',
+    thumbnail: '/foto/4.jpg',
+    description: 'Фото 4',
+    prompt: 'Блондинка в коротком цветочном платье с открытым плечом сидит на полу, демонстрируя свои стройные ножки и соблазнительную улыбку.(фото для знакомства)'
   },
   {
     id: 'img5',
-    url: 'https://images.unsplash.com/photo-1465146344425-f00d5f5c8f07?ixlib=rb-1.2.1&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1200&q=80',
-    thumbnail: 'https://images.unsplash.com/photo-1465146344425-f00d5f5c8f07?ixlib=rb-1.2.1&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=300&q=80',
-    description: 'Лесное озеро'
+    url: '/foto/5.jpg',
+    thumbnail: '/foto/5.jpg',
+    description: 'Фото 5',
+    prompt: 'Молодая женщина в лёгком цветочном платье расслабленно сидит в кресле, с изящно вытянутыми ногами и стаканом в руке, глядя в камеру с мягкой, томной улыбкой.(фото для знакомства)'
   },
   {
     id: 'img6',
-    url: 'https://images.unsplash.com/photo-1472214103451-9374bd1c798e?ixlib=rb-1.2.1&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1200&q=80',
-    thumbnail: 'https://images.unsplash.com/photo-1472214103451-9374bd1c798e?ixlib=rb-1.2.1&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=300&q=80',
-    description: 'Поле на закате'
+    url: '/foto/6.jpg',
+    thumbnail: '/foto/6.jpg',
+    description: 'Фото 6',
+    prompt: 'Молодая женщина в лёгком цветочном платье расслабленно сидит в кресле, с изящно вытянутыми ногами и стаканом в руке, глядя в камеру с мягкой, томной улыбкой в тёплой, интимной атмосфере. Показывает в камеру свой язык.(фото для знакомства)'
+  },
+  {
+    id: 'img7',
+    url: '/foto/7.jpg',
+    thumbnail: '/foto/7.jpg',
+    description: 'Фото 7',
+    prompt: 'Женщина в коротком платье с открытыми плечами и розовым цветочным узором стоит на коленях на мягком голубом ковре. Она немного наклонена вперёд, её босые ноги скрещены в щиколотках и хорошо видны, на лице лёгкая улыбка.(фото для прогрева)'
+  },
+  {
+    id: 'img8',
+    url: '/foto/8.jpg',
+    thumbnail: '/foto/8.jpg',
+    description: 'Фото 8',
+    prompt: 'Молодая женщина в платье с открытыми плечами и розово-белым цветочным узором стоит на коленях на мягком голубом ковре. Она слегка наклоняется к камере, игриво высовывая язык.(фото для прогрева)'
+  },
+  {
+    id: 'img9',
+    url: '/foto/9.jpg',
+    thumbnail: '/foto/9.jpg',
+    description: 'Фото 9',
+    prompt: 'Молодая женщина в белом платье с открытыми плечами и стоит на коленях на мягком голубом ковре в уютной спальне. Она игриво приподнимает край платья, приоткрывая бедро.(фото для прогрева)'
+  },
+  {
+    id: 'img10',
+    url: '/foto/10.jpg',
+    thumbnail: '/foto/10.jpg',
+    description: 'Фото 10',
+    prompt: 'Улыбающаяся молодая женщина в белом платье с открытыми плечами. Она стоит на одном колене на мягком голубом ковре, вторая нога согнута, обнажая гладкую кожу.(фото для прогрева)'
+  },
+  {
+    id: 'img11',
+    url: '/foto/11.jpg',
+    thumbnail: '/foto/11.jpg',
+    description: 'Фото 11',
+    prompt: 'Молодая женщина в белом платье стоит на коленях на мягком голубом ковре припдняв юбку и показавая задницу в обтягивающих трусиках(фото для прогрева)'
+  },
+  {
+    id: 'img12',
+    url: '/foto/12.jpg',
+    thumbnail: '/foto/12.jpg',
+    description: 'Фото 12',
+    prompt: 'Молодая женщина в белом платье стоит на коленях на мягком голубом ковре припдняв юбку,выгнув обнаженное бедро и показавая задницу в обтягивающих трусиках(фото для прогрева)'
+  },
+  {
+    id: 'img13',
+    url: '/foto/13.jpg',
+    thumbnail: '/foto/13.jpg',
+    description: 'Фото 13',
+    prompt: 'Молодая женщина в белом платье сидит на мягком голубом ковре раздвинув ноги и показывает свои трусики(фото для прогрева)'
+  },
+  {
+    id: 'img14',
+    url: '/foto/14.jpg',
+    thumbnail: '/foto/14.jpg',
+    description: 'Фото 14',
+    prompt: 'Молодая женщина в белом платье сидит на мягком голубом ковре раздвинув ноги и показывает свои трусики прикрывая трусики рукой(фото для прогрева)'
+  },
+  {
+    id: 'img15',
+    url: '/foto/15.jpg',
+    thumbnail: '/foto/15.jpg',
+    description: 'Фото 15',
+    prompt: 'Молодая женщина в белом платье стоит спиной к камере и задирает юбку(фото для прогрева)'
+  },
+  {
+    id: 'img16',
+    url: '/foto/16.jpg',
+    thumbnail: '/foto/16.jpg',
+    description: 'Фото 16',
+    prompt: 'Молодая женщина в белых трусиках сидит на голубом ковре и показывает обнаженную грудь(фото для продажи)'
+  },
+  {
+    id: 'img17',
+    url: '/foto/17.jpg',
+    thumbnail: '/foto/17.jpg',
+    description: 'Фото 17',
+    prompt: 'Молодая женщина в белых трусиках лежит на кровати и полубоком показывает свою грудь(фото для продажи)'
+  },
+  {
+    id: 'img18',
+    url: '/foto/18.jpg',
+    thumbnail: '/foto/18.jpg',
+    description: 'Фото 18',
+    prompt: 'Молодая женщина в белых трусиках лежит на кровати держа себя за бедра и показывает свои дырки(фото для продажи)'
+  },
+  {
+    id: 'img19',
+    url: '/foto/19.jpg',
+    thumbnail: '/foto/19.jpg',
+    description: 'Фото 19',
+    prompt: 'Молодая женщина в белых трусиках лежит на кровати и руками раздвигает свои половые губы,грудь обнажена(фото для продажи)'
+  },
+  {
+    id: 'img20',
+    url: '/foto/20.jpg',
+    thumbnail: '/foto/20.jpg',
+    description: 'Фото 20',
+    prompt: 'Голая молодая женщина показываетсвои половые губы крупным планом(фото для продажи)'
+  },
+  {
+    id: 'img21',
+    url: '/foto/21.jpg',
+    thumbnail: '/foto/21.jpg',
+    description: 'Фото 21',
+    prompt: 'молодая женщина показываетсвои половые губы крупным планом засунув в них пальцы(фото для продажи)'
+  },
+  {
+    id: 'img22',
+    url: '/foto/22.jpg',
+    thumbnail: '/foto/22.jpg',
+    description: 'Фото 22',
+    prompt: 'Голая молодая женщина стоит раком и показывает все свои дырки(фото для продажи)'
+  },
+  {
+    id: 'img23',
+    url: '/foto/23.jpg',
+    thumbnail: '/foto/23.jpg',
+    description: 'Фото 23',
+    prompt: 'Голая молодая женщина стоя показывает свою обнаженную грудь крупным планом(фото для продажи)'
+  },
+  {
+    id: 'img24',
+    url: '/foto/24.jpg',
+    thumbnail: '/foto/24.jpg',
+    description: 'Фото 24',
+    prompt: 'Молодая женщина вголая лежит на кровати и полубоком показывает свои дырки крупным планом(фото для продажи)'
   }
-];
+].sort(() => Math.random() - 0.5); // Перемешиваем массив в случайном порядке
 
 // Функция для генерации UUID v4
 function generateUUID() {
@@ -129,7 +262,7 @@ function generateUUID() {
 function Chat() {
   const [message, setMessage] = useState('');
   const [selectedUser, setSelectedUser] = useState('Marcus');
-  const [timeRemaining, setTimeRemaining] = useState(1200);
+  const [timeRemaining, setTimeRemaining] = useState(300);
   const [showCongratulations, setShowCongratulations] = useState(false);
   const [calculatingResults, setCalculatingResults] = useState(false);
   const [isSessionComplete, setIsSessionComplete] = useState(false);
@@ -138,10 +271,6 @@ function Chat() {
   const [testSessionId, setTestSessionId] = useState<string | null>(null);
   const [showPromptModal, setShowPromptModal] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
-  const navigate = useNavigate();
-  const chatContainerRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [showImageGallery, setShowImageGallery] = useState(false);
   const [customImages, setCustomImages] = useState<CustomImage[]>([]);
   const [activeTab, setActiveTab] = useState<'preloaded' | 'custom'>('preloaded');
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -177,6 +306,11 @@ function Chat() {
     { name: 'Olivia', status: 'Away', lastMessage: 'Торгуется о цене' },
     { name: 'Ava', status: 'Online', lastMessage: 'Проверяет границы' },
   ];
+
+  const navigate = useNavigate();
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showImageGallery, setShowImageGallery] = useState(false);
 
   // Load custom images from localStorage on component mount
   useEffect(() => {
@@ -474,12 +608,21 @@ function Chat() {
 
   // Настраиваем таймер для автоматического окончания тестирования
   useEffect(() => {
-    if (timeRemaining <= 0) return; // Если время уже истекло, не запускаем таймер
+    if (timeRemaining <= 0) return;
     
     const timer = setInterval(() => {
       setTimeRemaining(prevTime => {
         if (prevTime <= 1) {
           clearInterval(timer);
+          
+          // Проверяем, есть ли незавершенные ответы
+          const hasTypingMessages = Object.values(userStatus).some(status => status.isTyping);
+          
+          if (hasTypingMessages) {
+            // Если есть печатающие сообщения, ждем их завершения
+            return 1; // Оставляем 1 секунду
+          }
+          
           // Показываем окно поздравления и запускаем расчет результатов
           setShowCongratulations(true);
           setCalculatingResults(true);
@@ -510,7 +653,7 @@ function Chat() {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [navigate, testSessionId]);
+  }, [navigate, testSessionId, userStatus]);
 
   // Обновляем сессию после добавления каждого сообщения
   useEffect(() => {
@@ -532,6 +675,34 @@ function Chat() {
     
     updateMessageCount();
   }, [chatHistories, testSessionId]);
+
+  // Добавляем эффект для отслеживания завершения последнего сообщения
+  useEffect(() => {
+    if (timeRemaining === 1) {
+      const hasTypingMessages = Object.values(userStatus).some(status => status.isTyping);
+      
+      if (!hasTypingMessages) {
+        setTimeRemaining(0);
+        setShowCongratulations(true);
+        setCalculatingResults(true);
+        
+        if (testSessionId) {
+          const completeSession = async () => {
+            try {
+              await completeTestSession(testSessionId);
+              console.log('Test session completed after last message');
+              await analyzeDialogsAndSaveResults(testSessionId);
+            } catch (error) {
+              console.error('Error completing test session:', error);
+              setCalculatingResults(false);
+            }
+          };
+          
+          completeSession();
+        }
+      }
+    }
+  }, [userStatus, timeRemaining, testSessionId]);
 
   const formatTime = (seconds: number) => {
     const minutes = Math.floor(seconds / 60);
@@ -681,7 +852,8 @@ function Chat() {
               id: `custom-${Date.now()}`,
               url: imageUrl,
               thumbnail: thumbnailUrl,
-              description: file.name
+              description: file.name,
+              prompt: ''
             };
             
             // Add the new image to the custom images array
@@ -919,7 +1091,9 @@ function Chat() {
 
       // Сохраняем сообщение пользователя в чат
       const chatMessage: SupabaseChatMessage = {
-        content: messageContent,
+        content: selectedImage 
+          ? `[Фото ${selectedImage.match(/\/(\d+)\.jpg$/)?.[1] || ''}] [${preloadedImages.find(img => img.url === selectedImage)?.prompt || 'Пользователь отправил изображение'}] [модель отправила фото]`
+          : messageContent,
         time: new Date().toISOString(),
         isOwn: true,
         isRead: true
@@ -994,14 +1168,14 @@ function Chat() {
       let messagesToSend = chatHistory.map(msg => ({
         role: msg.isOwn ? 'user' : 'assistant',
         content: msg.imageUrl 
-          ? `${msg.content} [Пользователь отправил изображение]` 
+          ? `[Фото ${msg.imageUrl.match(/\/(\d+)\.jpg$/)?.[1] || ''}] [${preloadedImages.find(img => img.url === msg.imageUrl)?.prompt || 'Пользователь отправил изображение'}] [модель отправила фото]` 
           : msg.content
       })) as { role: 'user' | 'assistant' | 'system', content: string }[];
       
       messagesToSend.push({
         role: 'user',
         content: newMessage.imageUrl 
-          ? `${newMessage.content} [Пользователь отправил изображение]` 
+          ? `[Фото ${newMessage.imageUrl.match(/\/(\d+)\.jpg$/)?.[1] || ''}] [${preloadedImages.find(img => img.url === newMessage.imageUrl)?.prompt || 'Пользователь отправил изображение'}] [модель отправила фото]` 
           : newMessage.content
       });
 
@@ -1454,86 +1628,89 @@ function Chat() {
             ref={chatContainerRef}
             className="flex-1 overflow-y-auto p-4 space-y-4"
           >
-            {chatHistories[selectedUser].map((msg) => (
-              <div
-                key={msg.id}
-                className={`flex ${msg.isOwn ? 'justify-end' : 'justify-start'}`}
-                onClick={() => msg.error && handleRetry(msg)}
-              >
+            {chatHistories[selectedUser].map((msg) => {
+              const imagePrompt = msg.content.match(/\[Фото \d+\] \[(.*?)\]/)?.[1];
+              return (
                 <div
-                  className={`max-w-[70%] rounded-2xl p-3 ${
-                    msg.isOwn
-                      ? 'bg-gradient-to-r from-pink-500 to-purple-500'
-                      : msg.error
-                      ? 'bg-red-500/20 border border-red-500/40 cursor-pointer hover:bg-red-500/30'
-                      : msg.isTyping
-                      ? 'bg-[#2d2d2d] border border-[#3d3d3d]'
-                      : 'bg-[#3d3d3d]'
-                  }`}
+                  key={msg.id}
+                  className={`flex ${msg.isOwn ? 'justify-end' : 'justify-start'}`}
+                  onClick={() => msg.error && handleRetry(msg)}
                 >
-                  {msg.error && (
-                    <div className="space-y-2 mb-2">
-                      <div className="flex items-center gap-2">
-                        <AlertCircle className="w-4 h-4 text-red-500" />
-                        <span className="text-sm text-red-400">Ошибка отправки</span>
-                      </div>
-                      {msg.errorDetails && (
-                        <div className="flex items-start gap-2 bg-red-500/10 p-2 rounded">
-                          <Info className="w-4 h-4 text-red-400 mt-0.5" />
-                          <p className="text-xs text-red-400">{msg.errorDetails}</p>
+                  <div
+                    className={`max-w-[70%] rounded-2xl p-3 ${
+                      msg.isOwn
+                        ? 'bg-gradient-to-r from-pink-500 to-purple-500'
+                        : msg.error
+                        ? 'bg-red-500/20 border border-red-500/40 cursor-pointer hover:bg-red-500/30'
+                        : msg.isTyping
+                        ? 'bg-[#2d2d2d] border border-[#3d3d3d]'
+                        : 'bg-[#3d3d3d]'
+                    }`}
+                  >
+                    {msg.error && (
+                      <div className="space-y-2 mb-2">
+                        <div className="flex items-center gap-2">
+                          <AlertCircle className="w-4 h-4 text-red-500" />
+                          <span className="text-sm text-red-400">Ошибка отправки</span>
                         </div>
-                      )}
-                    </div>
-                  )}
-                  {msg.isTyping ? (
-                    <div className="flex items-center space-x-2">
-                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '200ms' }} />
-                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '400ms' }} />
-                    </div>
-                  ) : (
-                    <>
-                      <p>{msg.content}</p>
-                      {msg.imageUrl && (
-                        <div className="mt-2 rounded-lg overflow-hidden">
-                          <img 
-                            src={msg.imageUrl} 
-                            alt="Отправленное изображение" 
-                            className="max-w-full h-auto"
-                          />
-                        </div>
-                      )}
-                      <div className="flex items-center justify-end gap-2 mt-1">
-                        <p className="text-xs text-gray-300">{msg.time}</p>
-                        {msg.isOwn && (
-                          msg.isRead ? (
-                            <CheckCheck className="w-4 h-4 text-blue-500" />
-                          ) : (
-                            <Check className="w-4 h-4 text-gray-500" />
-                          )
+                        {msg.errorDetails && (
+                          <div className="flex items-start gap-2 bg-red-500/10 p-2 rounded">
+                            <Info className="w-4 h-4 text-red-400 mt-0.5" />
+                            <p className="text-xs text-red-400">{msg.errorDetails}</p>
+                          </div>
                         )}
                       </div>
-                    </>
-                  )}
+                    )}
+                    {msg.isTyping ? (
+                      <div className="flex items-center space-x-2">
+                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '200ms' }} />
+                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '400ms' }} />
+                      </div>
+                    ) : (
+                      <>
+                        <p>{imagePrompt ? '' : msg.content}</p>
+                        {(msg.imageUrl || imagePrompt) && (
+                          <div className="mt-1 rounded-md overflow-hidden">
+                            <img 
+                              src={msg.imageUrl || `/foto/${msg.content.match(/\[Фото (\d+)\]/)?.[1]}.jpg`} 
+                              alt="Отправленное изображение" 
+                              className="max-w-[200px] h-auto rounded-md border border-[#3d3d3d]"
+                            />
+                          </div>
+                        )}
+                        <div className="flex items-center justify-end gap-2 mt-1">
+                          <p className="text-xs text-gray-300">{msg.time}</p>
+                          {msg.isOwn && (
+                            msg.isRead ? (
+                              <CheckCheck className="w-4 h-4 text-blue-500" />
+                            ) : (
+                              <Check className="w-4 h-4 text-gray-500" />
+                            )
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* Image preview */}
           {selectedImage && (
-            <div className="p-2 border-t border-[#3d3d3d] bg-[#2d2d2d]">
+            <div className="p-1 border-t border-[#3d3d3d] bg-[#2d2d2d]">
               <div className="relative inline-block">
                 <img 
                   src={selectedImage} 
                   alt="Preview" 
-                  className="h-20 w-auto rounded-lg border border-[#3d3d3d]" 
+                  className="h-16 w-auto rounded-md border border-[#3d3d3d]" 
                 />
                 <button 
                   onClick={handleRemoveImage}
-                  className="absolute -top-2 -right-2 bg-red-500 rounded-full p-1"
+                  className="absolute -top-1 -right-1 bg-red-500 rounded-full p-0.5"
                 >
-                  <X className="w-4 h-4" />
+                  <X className="w-3 h-3" />
                 </button>
               </div>
             </div>
@@ -1541,8 +1718,8 @@ function Chat() {
 
           {/* Image Gallery */}
           {showImageGallery && (
-            <div className="p-4 border-t border-[#3d3d3d] bg-[#2d2d2d]">
-              <div className="flex justify-between items-center mb-4">
+            <div className="fixed bottom-[80px] left-[320px] right-4 bg-[#2d2d2d] border-t border-[#3d3d3d] rounded-t-lg shadow-lg">
+              <div className="flex justify-between items-center p-4">
                 <div className="flex space-x-2">
                   <button 
                     onClick={() => setActiveTab('preloaded')}
@@ -1574,25 +1751,25 @@ function Chat() {
               </div>
 
               {activeTab === 'preloaded' && (
-                <div className="overflow-x-auto pb-2">
-                  <div className="flex space-x-3" style={{ minWidth: 'max-content' }}>
+                <div className="h-[calc(100vh-280px)] overflow-y-auto">
+                  <div className="grid grid-cols-6 gap-2">
                     {preloadedImages.map((image) => (
                       <div 
                         key={image.id}
                         onClick={() => selectImage(image.url)}
-                        className="cursor-pointer relative group flex-shrink-0"
+                        className="cursor-pointer relative group"
                       >
                         <img 
                           src={image.thumbnail} 
                           alt={image.description} 
-                          className="w-48 h-24 object-cover rounded-lg border border-[#3d3d3d] transition-all duration-200 group-hover:border-pink-500"
+                          className="w-full aspect-[4/3] object-contain bg-black rounded-lg border border-[#3d3d3d] transition-all duration-200 group-hover:border-pink-500"
                         />
                         <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all duration-200 flex items-center justify-center rounded-lg">
                           <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                            <ImagePlus className="w-6 h-6 text-white" />
+                            <ImagePlus className="w-4 h-4 text-white" />
                           </div>
                         </div>
-                        <p className="text-xs text-gray-400 mt-1 truncate max-w-[192px]">{image.description}</p>
+                        <p className="text-[10px] text-gray-400 mt-0.5 truncate">{image.description}</p>
                       </div>
                     ))}
                   </div>
@@ -1636,17 +1813,17 @@ function Chat() {
                       <p className="text-sm mt-1">Нажмите кнопку выше, чтобы загрузить</p>
                     </div>
                   ) : (
-                    <div className="overflow-x-auto pb-2">
-                      <div className="flex space-x-3" style={{ minWidth: 'max-content' }}>
+                    <div className="h-[calc(100vh-340px)] overflow-y-auto">
+                      <div className="grid grid-cols-4 gap-3">
                         {customImages.map((image) => (
                           <div 
                             key={image.id}
-                            className="cursor-pointer relative group flex-shrink-0"
+                            className="cursor-pointer relative group"
                           >
                             <img 
                               src={image.thumbnail} 
                               alt={image.description} 
-                              className="w-48 h-24 object-cover rounded-lg border border-[#3d3d3d] transition-all duration-200 group-hover:border-pink-500"
+                              className="w-full aspect-video object-cover rounded-lg border border-[#3d3d3d] transition-all duration-200 group-hover:border-pink-500"
                               onClick={() => selectImage(image.url)}
                             />
                             <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all duration-200 flex items-center justify-center rounded-lg">
