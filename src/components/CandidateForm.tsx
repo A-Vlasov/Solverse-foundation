@@ -1,22 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { UserCircle, FileText, ArrowRight } from 'lucide-react';
+import { UserCircle, FileText, ArrowRight, Clock, AlertCircle } from 'lucide-react';
+import { saveCandidateForm } from '../lib/supabase';
 
 function CandidateForm() {
   const [formData, setFormData] = useState({
-    firstName: '',
-    lastName: '',
-    aboutMe: '',
-    questions: {
-      experience: '',
-      education: '',
-      skills: '',
-      motivation: '',
-      expectations: '',
-      availability: '',
-      relocation: ''
-    }
+    first_name: '',
+    telegram_tag: '',
+    shift: '',
+    experience: '',
+    motivation: '',
+    about_me: ''
   });
+
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -24,65 +24,98 @@ function CandidateForm() {
     console.log('Loading candidate data in CandidateForm:', savedData);
     
     if (savedData) {
-      // Проверяем наличие обязательных полей
-      if (!savedData.firstName || !savedData.lastName) {
-        console.warn('Missing required fields in candidateData:', savedData);
-      }
-      
       setFormData(prevData => ({
         ...prevData,
-        firstName: savedData.firstName || prevData.firstName,
-        lastName: savedData.lastName || prevData.lastName,
-        aboutMe: savedData.aboutMe || prevData.aboutMe,
-        questions: {
-          ...prevData.questions,
-          ...(savedData.questions || {})
-        }
+        first_name: savedData.first_name || prevData.first_name,
+        telegram_tag: savedData.telegram_tag || prevData.telegram_tag,
+        shift: savedData.shift || prevData.shift,
+        experience: savedData.experience || prevData.experience,
+        motivation: savedData.motivation || prevData.motivation,
+        about_me: savedData.about_me || prevData.about_me
       }));
     }
   }, []);
 
-  const handleNext = () => {
-    // Получаем существующие данные из sessionStorage
-    const existingData = JSON.parse(sessionStorage.getItem('candidateData') || '{}');
-    console.log('Existing candidate data:', existingData);
-    
-    // Проверяем наличие userId
-    if (!existingData.userId) {
-      console.warn('Missing userId in existing data');
+  const validateForm = () => {
+    const newErrors: Record<string, string> = {};
+
+    if (!formData.first_name.trim()) {
+      newErrors.first_name = 'Имя обязательно для заполнения';
     }
-    
-    // Объединяем существующие данные с данными формы
-    const updatedData = {
-      ...existingData,
-      ...formData,
-      // Если firstName и lastName были изменены в форме, обновляем их
-      firstName: formData.firstName || existingData.firstName,
-      lastName: formData.lastName || existingData.lastName
-    };
-    
-    console.log('Saving updated candidate data:', updatedData);
-    
-    // Сохраняем обновленные данные в sessionStorage
-    sessionStorage.setItem('candidateData', JSON.stringify(updatedData));
-    
-    navigate('/test-info');
+
+    if (!formData.telegram_tag.trim()) {
+      newErrors.telegram_tag = 'Telegram тег обязателен для заполнения';
+    } else if (!formData.telegram_tag.startsWith('@')) {
+      newErrors.telegram_tag = 'Telegram тег должен начинаться с @';
+    }
+
+    if (!formData.shift) {
+      newErrors.shift = 'Выберите смену';
+    }
+
+    if (!formData.experience.trim()) {
+      newErrors.experience = 'Расскажите о вашем опыте';
+    }
+
+    if (!formData.motivation.trim()) {
+      newErrors.motivation = 'Расскажите о вашей мотивации';
+    }
+
+    if (!formData.about_me.trim()) {
+      newErrors.about_me = 'Расскажите о себе';
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement | HTMLSelectElement>) => {
+  const handleNext = async () => {
+    setSubmitError(null);
+    
+    if (!validateForm()) {
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      // Сохраняем данные в базу
+      const savedForm = await saveCandidateForm(formData);
+      console.log('Form saved successfully:', savedForm);
+
+      // Сохраняем данные в sessionStorage
+      const existingData = JSON.parse(sessionStorage.getItem('candidateData') || '{}');
+      const updatedData = {
+        ...existingData,
+        ...formData,
+        formId: savedForm.id, // Сохраняем ID формы
+        employeeId: savedForm.employee_id // Сохраняем ID сотрудника
+      };
+      
+      sessionStorage.setItem('candidateData', JSON.stringify(updatedData));
+      
+      // Переходим к следующему шагу
+      navigate('/test-info');
+    } catch (error) {
+      console.error('Error saving form:', error);
+      setSubmitError(error instanceof Error ? error.message : 'Произошла ошибка при сохранении формы');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement | HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    if (name.startsWith('q_')) {
-      setFormData(prev => ({
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+    
+    // Очищаем ошибку поля при изменении
+    if (errors[name]) {
+      setErrors(prev => ({
         ...prev,
-        questions: {
-          ...prev.questions,
-          [name.replace('q_', '')]: value
-        }
-      }));
-    } else {
-      setFormData(prev => ({
-        ...prev,
-        [name]: value
+        [name]: ''
       }));
     }
   };
@@ -96,146 +129,191 @@ function CandidateForm() {
             <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-purple-500">
               Анкета соискателя
             </h1>
-            <p className="text-gray-400 mt-2">Пожалуйста, ответьте на все вопросы анкеты</p>
+            <p className="text-gray-400 mt-2">Пожалуйста, заполните все поля анкеты</p>
           </div>
 
-          <div className="mb-8">
-            <div className="bg-[#1a1a1a] rounded-lg p-4 border border-[#3d3d3d]">
-              <h2 className="text-lg font-semibold text-gray-300 mb-2">Информация о кандидате</h2>
-              <p className="text-gray-400">
-                {formData.lastName} {formData.firstName}
-              </p>
+          {submitError && (
+            <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-lg flex items-center gap-2 text-red-400">
+              <AlertCircle className="w-5 h-5 flex-shrink-0" />
+              <p>{submitError}</p>
+            </div>
+          )}
+
+          <div className="space-y-6">
+            <div>
+              <label htmlFor="first_name" className="block text-sm font-medium text-gray-300 mb-1">
+                Имя <span className="text-red-500">*</span>
+              </label>
+              <input
+                id="first_name"
+                name="first_name"
+                type="text"
+                value={formData.first_name}
+                onChange={handleChange}
+                className={`w-full px-4 py-3 rounded-lg bg-[#1a1a1a] border ${
+                  errors.first_name ? 'border-red-500' : 'border-[#3d3d3d]'
+                } text-gray-100 focus:ring-2 focus:ring-pink-500 focus:border-transparent transition duration-200 outline-none`}
+                placeholder="Введите ваше имя..."
+              />
+              {errors.first_name && (
+                <p className="mt-1 text-sm text-red-500">{errors.first_name}</p>
+              )}
+            </div>
+
+            <div>
+              <label htmlFor="telegram_tag" className="block text-sm font-medium text-gray-300 mb-1">
+                Telegram тег <span className="text-red-500">*</span>
+              </label>
+              <input
+                id="telegram_tag"
+                name="telegram_tag"
+                type="text"
+                value={formData.telegram_tag}
+                onChange={handleChange}
+                className={`w-full px-4 py-3 rounded-lg bg-[#1a1a1a] border ${
+                  errors.telegram_tag ? 'border-red-500' : 'border-[#3d3d3d]'
+                } text-gray-100 focus:ring-2 focus:ring-pink-500 focus:border-transparent transition duration-200 outline-none`}
+                placeholder="Введите ваш тег в Telegram..."
+              />
+              {errors.telegram_tag && (
+                <p className="mt-1 text-sm text-red-500">{errors.telegram_tag}</p>
+              )}
+            </div>
+
+            <div>
+              <label htmlFor="shift" className="block text-sm font-medium text-gray-300 mb-1">
+                Номер смены <span className="text-red-500">*</span>
+              </label>
+              <div className="grid grid-cols-3 gap-4">
+                <button
+                  type="button"
+                  onClick={() => handleChange({ target: { name: 'shift', value: 'night' } } as React.ChangeEvent<HTMLInputElement>)}
+                  className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg border ${
+                    formData.shift === 'night'
+                      ? 'bg-pink-500 border-transparent text-white'
+                      : errors.shift
+                      ? 'bg-[#1a1a1a] border-red-500 text-gray-300 hover:bg-[#2d2d2d]'
+                      : 'bg-[#1a1a1a] border-[#3d3d3d] text-gray-300 hover:bg-[#2d2d2d]'
+                  } transition duration-200`}
+                >
+                  <Clock className="w-4 h-4" />
+                  #ночь 0-8
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleChange({ target: { name: 'shift', value: 'day' } } as React.ChangeEvent<HTMLInputElement>)}
+                  className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg border ${
+                    formData.shift === 'day'
+                      ? 'bg-pink-500 border-transparent text-white'
+                      : errors.shift
+                      ? 'bg-[#1a1a1a] border-red-500 text-gray-300 hover:bg-[#2d2d2d]'
+                      : 'bg-[#1a1a1a] border-[#3d3d3d] text-gray-300 hover:bg-[#2d2d2d]'
+                  } transition duration-200`}
+                >
+                  <Clock className="w-4 h-4" />
+                  #день 8-16
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleChange({ target: { name: 'shift', value: 'evening' } } as React.ChangeEvent<HTMLInputElement>)}
+                  className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg border ${
+                    formData.shift === 'evening'
+                      ? 'bg-pink-500 border-transparent text-white'
+                      : errors.shift
+                      ? 'bg-[#1a1a1a] border-red-500 text-gray-300 hover:bg-[#2d2d2d]'
+                      : 'bg-[#1a1a1a] border-[#3d3d3d] text-gray-300 hover:bg-[#2d2d2d]'
+                  } transition duration-200`}
+                >
+                  <Clock className="w-4 h-4" />
+                  #вечер 16-0
+                </button>
+              </div>
+              {errors.shift && (
+                <p className="mt-1 text-sm text-red-500">{errors.shift}</p>
+              )}
+            </div>
+
+            <div>
+              <label htmlFor="experience" className="block text-sm font-medium text-gray-300 mb-1">
+                Опыт <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                id="experience"
+                name="experience"
+                rows={3}
+                value={formData.experience}
+                onChange={handleChange}
+                className={`w-full px-4 py-3 rounded-lg bg-[#1a1a1a] border ${
+                  errors.experience ? 'border-red-500' : 'border-[#3d3d3d]'
+                } text-gray-100 focus:ring-2 focus:ring-pink-500 focus:border-transparent transition duration-200 outline-none resize-none`}
+                placeholder="Расскажите о вашем опыте работы..."
+              />
+              {errors.experience && (
+                <p className="mt-1 text-sm text-red-500">{errors.experience}</p>
+              )}
+            </div>
+
+            <div>
+              <label htmlFor="motivation" className="block text-sm font-medium text-gray-300 mb-1">
+                Почему решил попасть к нам <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                id="motivation"
+                name="motivation"
+                rows={3}
+                value={formData.motivation}
+                onChange={handleChange}
+                className={`w-full px-4 py-3 rounded-lg bg-[#1a1a1a] border ${
+                  errors.motivation ? 'border-red-500' : 'border-[#3d3d3d]'
+                } text-gray-100 focus:ring-2 focus:ring-pink-500 focus:border-transparent transition duration-200 outline-none resize-none`}
+                placeholder="Опишите вашу мотивацию..."
+              />
+              {errors.motivation && (
+                <p className="mt-1 text-sm text-red-500">{errors.motivation}</p>
+              )}
+            </div>
+
+            <div>
+              <label htmlFor="about_me" className="block text-sm font-medium text-gray-300 mb-1">
+                В целом расскажи о себе <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                id="about_me"
+                name="about_me"
+                rows={4}
+                value={formData.about_me}
+                onChange={handleChange}
+                className={`w-full px-4 py-3 rounded-lg bg-[#1a1a1a] border ${
+                  errors.about_me ? 'border-red-500' : 'border-[#3d3d3d]'
+                } text-gray-100 focus:ring-2 focus:ring-pink-500 focus:border-transparent transition duration-200 outline-none resize-none`}
+                placeholder="Расскажите о себе..."
+              />
+              {errors.about_me && (
+                <p className="mt-1 text-sm text-red-500">{errors.about_me}</p>
+              )}
             </div>
           </div>
 
-          <div>
-            <label htmlFor="aboutMe" className="block text-sm font-medium text-gray-300 mb-1">
-              Расскажите о себе
-            </label>
-            <textarea
-              id="aboutMe"
-              name="aboutMe"
-              rows={4}
-              value={formData.aboutMe}
-              onChange={handleChange}
-              className="w-full px-4 py-3 rounded-lg bg-[#1a1a1a] border border-[#3d3d3d] text-gray-100 focus:ring-2 focus:ring-pink-500 focus:border-transparent transition duration-200 outline-none resize-none"
-              placeholder="Кратко опишите ваш профессиональный опыт, навыки и личные качества..."
-            />
-          </div>
-
-          <div className="space-y-6 mt-6">
-            <div className="flex items-center gap-2">
-              <FileText className="w-5 h-5 text-pink-500" />
-              <h2 className="text-lg font-semibold text-gray-200">Вопросы анкеты</h2>
-            </div>
-
-            <div>
-              <label htmlFor="q_experience" className="block text-sm font-medium text-gray-300 mb-1">
-                1. Какие основные правила общения и поведения должны соблюдаться на OnlyFans, и как вы будете их обеспечивать?
-              </label>
-              <textarea
-                id="q_experience"
-                name="q_experience"
-                rows={3}
-                value={formData.questions.experience}
-                onChange={handleChange}
-                className="w-full px-4 py-3 rounded-lg bg-[#1a1a1a] border border-[#3d3d3d] text-gray-100 focus:ring-2 focus:ring-pink-500 focus:border-transparent transition duration-200 outline-none resize-none"
-              />
-            </div>
-
-            <div>
-              <label htmlFor="q_education" className="block text-sm font-medium text-gray-300 mb-1">
-                2. Как бы вы завели разговор с новым пользователем, чтобы понять, готов ли он платить за контент?
-              </label>
-              <textarea
-                id="q_education"
-                name="q_education"
-                rows={3}
-                value={formData.questions.education}
-                onChange={handleChange}
-                className="w-full px-4 py-3 rounded-lg bg-[#1a1a1a] border border-[#3d3d3d] text-gray-100 focus:ring-2 focus:ring-pink-500 focus:border-transparent transition duration-200 outline-none resize-none"
-              />
-            </div>
-
-            <div>
-              <label htmlFor="q_skills" className="block text-sm font-medium text-gray-300 mb-1">
-                3. Какой вопрос вы бы задали, чтобы сразу определить, серьёзен ли человек или просто хочет пообщаться бесплатно?
-              </label>
-              <textarea
-                id="q_skills"
-                name="q_skills"
-                rows={3}
-                value={formData.questions.skills}
-                onChange={handleChange}
-                className="w-full px-4 py-3 rounded-lg bg-[#1a1a1a] border border-[#3d3d3d] text-gray-100 focus:ring-2 focus:ring-pink-500 focus:border-transparent transition duration-200 outline-none resize-none"
-              />
-            </div>
-
-            <div>
-              <label htmlFor="q_motivation" className="block text-sm font-medium text-gray-300 mb-1">
-                4. Как бы вы убедили сомневающегося пользователя оформить подписку?
-              </label>
-              <textarea
-                id="q_motivation"
-                name="q_motivation"
-                rows={3}
-                value={formData.questions.motivation}
-                onChange={handleChange}
-                className="w-full px-4 py-3 rounded-lg bg-[#1a1a1a] border border-[#3d3d3d] text-gray-100 focus:ring-2 focus:ring-pink-500 focus:border-transparent transition duration-200 outline-none resize-none"
-              />
-            </div>
-
-            <div>
-              <label htmlFor="q_expectations" className="block text-sm font-medium text-gray-300 mb-1">
-                5. Как бы вы отреагировали на просьбу о скидке или бесплатном доступе "на пробу"?
-              </label>
-              <textarea
-                id="q_expectations"
-                name="q_expectations"
-                rows={3}
-                value={formData.questions.expectations}
-                onChange={handleChange}
-                className="w-full px-4 py-3 rounded-lg bg-[#1a1a1a] border border-[#3d3d3d] text-gray-100 focus:ring-2 focus:ring-pink-500 focus:border-transparent transition duration-200 outline-none resize-none"
-              />
-            </div>
-
-            <div>
-              <label htmlFor="q_availability" className="block text-sm font-medium text-gray-300 mb-1">
-                6. Как бы вы действовали, если кто-то предложит перевести деньги за контент вне платформы?
-              </label>
-              <textarea
-                id="q_availability"
-                name="q_availability"
-                rows={3}
-                value={formData.questions.availability}
-                onChange={handleChange}
-                className="w-full px-4 py-3 rounded-lg bg-[#1a1a1a] border border-[#3d3d3d] text-gray-100 focus:ring-2 focus:ring-pink-500 focus:border-transparent transition duration-200 outline-none resize-none"
-              />
-            </div>
-
-            <div>
-              <label htmlFor="q_relocation" className="block text-sm font-medium text-gray-300 mb-1">
-                7. Как объяснить разницу между бесплатным и платным контентом, не отпугнув клиента?
-              </label>
-              <textarea
-                id="q_relocation"
-                name="q_relocation"
-                rows={3}
-                value={formData.questions.relocation}
-                onChange={handleChange}
-                className="w-full px-4 py-3 rounded-lg bg-[#1a1a1a] border border-[#3d3d3d] text-gray-100 focus:ring-2 focus:ring-pink-500 focus:border-transparent transition duration-200 outline-none resize-none"
-              />
-            </div>
-          </div>
-
-          <div className="mt-6">
+          <div className="mt-8">
             <button
               type="button"
               onClick={handleNext}
-              className="w-full py-4 rounded-lg text-white font-semibold transition duration-200 flex items-center justify-center gap-2 bg-gradient-to-r from-pink-500 to-purple-500 hover:opacity-90"
+              disabled={isSubmitting}
+              className={`w-full py-4 rounded-lg text-white font-semibold transition duration-200 flex items-center justify-center gap-2 bg-gradient-to-r from-pink-500 to-purple-500 hover:opacity-90 ${
+                isSubmitting ? 'opacity-50 cursor-not-allowed' : ''
+              }`}
             >
-              <ArrowRight className="w-5 h-5" />
-              Далее
+              {isSubmitting ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Сохранение...
+                </>
+              ) : (
+                <>
+                  <ArrowRight className="w-5 h-5" />
+                  Далее
+                </>
+              )}
             </button>
           </div>
         </div>

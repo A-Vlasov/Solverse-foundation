@@ -127,6 +127,31 @@ export interface TestResult {
   updated_at?: string;
 }
 
+export interface CandidateForm {
+  id?: string;
+  employee_id?: string;
+  first_name: string;
+  telegram_tag: string;
+  shift: string;
+  experience: string;
+  motivation: string;
+  about_me: string;
+  created_at?: string;
+}
+
+// Интерфейс для данных анкеты соискателя
+export interface CandidateFormData {
+  id: string;
+  first_name: string;
+  telegram_tag: string;
+  shift: string;
+  experience: string;
+  motivation: string;
+  about_me: string;
+  created_at: string;
+  employee_id: string;
+}
+
 // Employee functions
 export async function createEmployee(employee: Omit<Employee, 'id' | 'created_at' | 'updated_at'>) {
   const { data, error } = await supabase
@@ -961,5 +986,78 @@ export async function generateAnalysisPrompt(sessionId: string): Promise<string>
   } catch (error) {
     console.error('Error generating analysis prompt:', error);
     throw error;
+  }
+}
+
+export async function saveCandidateForm(formData: Omit<CandidateForm, 'id' | 'created_at'>): Promise<CandidateForm> {
+  try {
+    // Сначала создаем запись сотрудника
+    const employee = await createEmployee({
+      first_name: formData.first_name,
+      last_name: '', // Оставляем пустым, так как в форме нет фамилии
+      department: 'candidates', // Отдел для кандидатов
+      level: 'candidate', // Уровень для кандидатов
+      success: 0,
+      trend: 'up',
+      improvement: '',
+      status: 'pending',
+      avatar: '' // Оставляем пустым, так как в форме нет аватара
+    });
+
+    // Теперь создаем форму кандидата с employee_id
+    const dbFormData = {
+      employee_id: employee.id, // Используем ID созданного сотрудника
+      first_name: formData.first_name,
+      telegram_tag: formData.telegram_tag,
+      shift: formData.shift,
+      experience: formData.experience,
+      motivation: formData.motivation,
+      about_me: formData.about_me
+    };
+
+    const { data, error } = await supabase
+      .from('candidate_forms')
+      .insert([dbFormData])
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error saving candidate form:', error);
+      throw new Error(`Error saving candidate form: ${error.message}`);
+    }
+
+    if (!data) {
+      throw new Error('No data returned from candidate form creation');
+    }
+
+    // Сохраняем employee_id в возвращаемых данных для последующего использования
+    return {
+      ...data,
+      employee_id: employee.id
+    };
+  } catch (error) {
+    console.error('Error in saveCandidateForm:', error);
+    throw error;
+  }
+}
+
+// Функция для получения данных анкеты соискателя по id сотрудника
+export async function getCandidateFormByEmployeeId(employeeId: string): Promise<CandidateFormData | null> {
+  try {
+    const { data, error } = await supabase
+      .from('candidate_forms')
+      .select('*')
+      .eq('employee_id', employeeId)
+      .single();
+
+    if (error) {
+      console.error('Error fetching candidate form:', error);
+      return null;
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Error in getCandidateFormByEmployeeId:', error);
+    return null;
   }
 }

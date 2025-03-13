@@ -20,8 +20,9 @@ import {
   CheckCircle,
   XCircle,
   FileText,
+  Loader2,
 } from 'lucide-react';
-import { getRecentTestSessions, TestSession } from '../lib/supabase';
+import { getRecentTestSessions, TestSession, getEmployees, Employee } from '../lib/supabase';
 
 // Локальный интерфейс для отображения сессий в таблице
 interface SessionDisplay extends TestSession {
@@ -37,16 +38,37 @@ function Dashboard() {
     date: 'all',
   });
   
+  // Состояние для хранения данных о сотрудниках
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [loadingEmployees, setLoadingEmployees] = useState(true);
+  
   // Состояние для хранения данных о недавних тестированиях
   const [recentTestSessions, setRecentTestSessions] = useState<SessionDisplay[]>([]);
   const [loadingTestSessions, setLoadingTestSessions] = useState(true);
+
+  // Загружаем данные о сотрудниках при монтировании компонента
+  useEffect(() => {
+    const fetchEmployees = async () => {
+      try {
+        setLoadingEmployees(true);
+        const data = await getEmployees();
+        setEmployees(data);
+      } catch (error) {
+        console.error('Error fetching employees:', error);
+      } finally {
+        setLoadingEmployees(false);
+      }
+    };
+
+    fetchEmployees();
+  }, []);
 
   // Загружаем данные о недавних тестированиях при монтировании компонента
   useEffect(() => {
     const fetchRecentTestSessions = async () => {
       try {
         setLoadingTestSessions(true);
-        const sessions = await getRecentTestSessions(10); // Увеличим количество сессий до 10
+        const sessions = await getRecentTestSessions(10);
         console.log('Fetched recent test sessions:', sessions);
         
         // Проверяем наличие данных о соискателях
@@ -56,7 +78,6 @@ function Dashboard() {
           }
         });
         
-        // Используем сессии напрямую, так как сортировка уже выполнена в getRecentTestSessions
         const displaySessions: SessionDisplay[] = sessions.map(session => ({
           ...session,
           character_name: getCharacterNameBySessionNumber(session.id),
@@ -71,13 +92,9 @@ function Dashboard() {
       }
     };
     
-    // Загружаем данные сразу при монтировании
     fetchRecentTestSessions();
     
-    // Устанавливаем интервал для автоматического обновления
-    const intervalId = setInterval(fetchRecentTestSessions, 30000); // Обновляем каждые 30 секунд
-    
-    // Очищаем интервал при размонтировании
+    const intervalId = setInterval(fetchRecentTestSessions, 30000);
     return () => clearInterval(intervalId);
   }, []);
 
@@ -106,10 +123,15 @@ function Dashboard() {
     return Math.floor(Math.random() * 20) + 5;
   };
 
-  // Mock data - replace with real data from your backend
   const stats = {
-    todayTrainees: 24,
-    successRate: 78,
+    todayTrainees: recentTestSessions.filter(session => {
+      const today = new Date();
+      const sessionDate = new Date(session.created_at);
+      return sessionDate.toDateString() === today.toDateString();
+    }).length,
+    successRate: Math.round(
+      (recentTestSessions.filter(session => session.completed).length / recentTestSessions.length) * 100
+    ) || 0,
     commonErrors: [
       { error: 'Неправильное приветствие', count: 15 },
       { error: 'Отсутствие эмпатии', count: 12 },
@@ -117,63 +139,30 @@ function Dashboard() {
     ],
   };
 
-  const employees = [
-    {
-      id: '1',
-      name: 'Иван Петров',
-      department: 'Продажи',
-      level: 'Средний',
-      success: 85,
-      trend: 'up',
-      improvement: '+8%',
-      status: 'растёт',
-      avatar: 'И',
-    },
-    {
-      id: '2',
-      name: 'Анна Смирнова',
-      department: 'Поддержка',
-      level: 'Новичок',
-      success: 40,
-      trend: 'down',
-      improvement: '-5%',
-      status: 'ошибки в аргументации',
-      avatar: 'А',
-    },
-    {
-      id: '3',
-      name: 'Дмитрий Орлов',
-      department: 'Продажи',
-      level: 'Эксперт',
-      success: 65,
-      trend: 'down',
-      improvement: '-3%',
-      status: 'слаб в закрытии сделок',
-      avatar: 'Д',
-    },
-    {
-      id: '4',
-      name: 'Елена Козлова',
-      department: 'Маркетинг',
-      level: 'Средний',
-      success: 75,
-      trend: 'up',
-      improvement: '+12%',
-      status: 'стабильный рост',
-      avatar: 'Е',
-    },
-  ];
-
   const departments = ['Все отделы', 'Продажи', 'Поддержка', 'Маркетинг'];
   const levels = ['Все уровни', 'Новичок', 'Средний', 'Эксперт'];
   const dateRanges = ['Все время', 'Сегодня', 'Неделя', 'Месяц'];
 
-  const filteredEmployees = employees.filter(employee => {
-    return (
-      (filters.department === 'all' || employee.department === filters.department) &&
-      (filters.level === 'all' || employee.level === filters.level)
-    );
-  });
+  const filteredEmployees = employees
+    // Сначала удаляем дубликаты по имени и нормализованному отделу
+    .filter((employee, index, self) =>
+      index === self.findIndex((e) => 
+        e.first_name === employee.first_name && 
+        e.department.toLowerCase() === employee.department.toLowerCase()
+      )
+    )
+    // Затем применяем фильтры
+    .map(employee => ({
+      ...employee,
+      department: employee.department.toLowerCase() === 'candidates' ? 'Candidates' : employee.department,
+      level: employee.level.toLowerCase() === 'candidate' ? 'Junior' : employee.level
+    }))
+    .filter(employee => {
+      return (
+        (filters.department === 'all' || employee.department === filters.department) &&
+        (filters.level === 'all' || employee.level === filters.level)
+      );
+    });
 
   const handleEmployeeClick = (id: string) => {
     navigate(`/admin/employee/${id}`);
@@ -451,47 +440,92 @@ function Dashboard() {
 
           {/* Employees List */}
           <div className="space-y-4">
-            {filteredEmployees.map((employee) => (
-              <div
-                key={employee.id}
-                onClick={() => handleEmployeeClick(employee.id)}
-                className="flex items-center justify-between p-4 bg-[#1a1a1a] rounded-xl border border-[#3d3d3d] cursor-pointer hover:border-pink-500 transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-r from-pink-500 to-purple-500 flex items-center justify-center font-semibold">
-                    {employee.avatar}
-                  </div>
-                  <div>
-                    <h3 className="font-medium">{employee.name}</h3>
-                    <div className="flex items-center gap-2 text-sm">
-                      <span className="text-gray-400">{employee.department}</span>
-                      <span className="text-gray-600">•</span>
-                      <span className={`${
-                        employee.level === 'Эксперт' ? 'text-purple-400' :
-                        employee.level === 'Средний' ? 'text-blue-400' :
-                        'text-green-400'
-                      }`}>{employee.level}</span>
-                    </div>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium">{employee.success}%</span>
-                    <div className={`flex items-center gap-1 ${
-                      employee.trend === 'up' ? 'text-green-500' : 'text-red-500'
-                    }`}>
-                      {employee.trend === 'up' ? (
-                        <ArrowUpRight className="w-4 h-4" />
-                      ) : (
-                        <ArrowDownRight className="w-4 h-4" />
-                      )}
-                      <span>{employee.improvement}</span>
-                    </div>
-                  </div>
-                  <p className="text-sm text-gray-400">{employee.status}</p>
-                </div>
+            {loadingEmployees ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-8 h-8 text-pink-500 animate-spin" />
               </div>
-            ))}
+            ) : filteredEmployees.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="text-left border-b border-[#3d3d3d]">
+                      <th className="pb-3 text-sm font-medium text-gray-400">Сотрудник</th>
+                      <th className="pb-3 text-sm font-medium text-gray-400">Отдел</th>
+                      <th className="pb-3 text-sm font-medium text-gray-400">Уровень</th>
+                      <th className="pb-3 text-sm font-medium text-gray-400">Успешность</th>
+                      <th className="pb-3 text-sm font-medium text-gray-400">Тренд</th>
+                      <th className="pb-3 text-sm font-medium text-gray-400">Статус</th>
+                      <th className="pb-3 text-sm font-medium text-gray-400">Действия</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredEmployees.map((employee) => (
+                      <tr
+                        key={employee.id}
+                        className="border-b border-[#3d3d3d] hover:bg-[#2a2a2a] transition-colors cursor-pointer"
+                        onClick={() => handleEmployeeClick(employee.id)}
+                      >
+                        <td className="py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-pink-500 flex items-center justify-center text-white font-medium">
+                              {employee.first_name[0]}
+                            </div>
+                            <span className="text-white">{employee.first_name}</span>
+                          </div>
+                        </td>
+                        <td className="py-4">
+                          <span className="text-gray-300">{employee.department}</span>
+                        </td>
+                        <td className="py-4">
+                          <span className="text-gray-300">{employee.level}</span>
+                        </td>
+                        <td className="py-4">
+                          <div className="flex items-center gap-2">
+                            <div className="w-16 h-2 rounded-full bg-[#3d3d3d]">
+                              <div
+                                className="h-full rounded-full bg-pink-500"
+                                style={{ width: `${employee.success}%` }}
+                              />
+                            </div>
+                            <span className="text-gray-300">{employee.success}%</span>
+                          </div>
+                        </td>
+                        <td className="py-4">
+                          <div className="flex items-center gap-1">
+                            {employee.trend === 'up' ? (
+                              <ArrowUpRight className="w-4 h-4 text-green-500" />
+                            ) : (
+                              <ArrowDownRight className="w-4 h-4 text-red-500" />
+                            )}
+                            <span className={employee.trend === 'up' ? 'text-green-500' : 'text-red-500'}>
+                              {employee.improvement}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="py-4">
+                          <span className="text-gray-300">{employee.status}</span>
+                        </td>
+                        <td className="py-4">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleViewEmployeeTestResults(employee.id);
+                            }}
+                            className="px-3 py-1 text-sm text-pink-500 hover:text-pink-400 transition-colors"
+                          >
+                            Результаты тестов
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="text-center py-8 text-gray-400">
+                Нет сотрудников, соответствующих выбранным фильтрам
+              </div>
+            )}
           </div>
         </div>
       </div>
