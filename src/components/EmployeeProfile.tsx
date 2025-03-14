@@ -20,9 +20,6 @@ import {
   ThumbsDown,
   Zap,
   FileText,
-  Moon,
-  Sun,
-  Sunset,
 } from 'lucide-react';
 import { getCandidateFormByEmployeeId, CandidateFormData, getEmployee, Employee } from '../lib/supabase';
 
@@ -113,35 +110,6 @@ function EmployeeProfile() {
     },
   };
 
-  const getShiftDisplay = (shift: string) => {
-    switch (shift?.toLowerCase()) {
-      case '#ночь 0-8':
-        return {
-          icon: <Moon className="w-4 h-4 text-blue-400" />,
-          text: 'с 00:00 до 08:00',
-          label: 'Ночная смена'
-        };
-      case '#день 8-16':
-        return {
-          icon: <Sun className="w-4 h-4 text-yellow-400" />,
-          text: 'с 08:00 до 16:00',
-          label: 'Дневная смена'
-        };
-      case '#вечер 16-0':
-        return {
-          icon: <Sunset className="w-4 h-4 text-orange-400" />,
-          text: 'с 16:00 до 00:00',
-          label: 'Вечерняя смена'
-        };
-      default:
-        return {
-          icon: null,
-          text: shift,
-          label: 'Смена'
-        };
-    }
-  };
-
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#1a1a1a] to-[#2d2d2d] text-gray-100 p-6">
       {/* Header */}
@@ -187,15 +155,7 @@ function EmployeeProfile() {
               </div>
               <div className="p-4 bg-[#1a1a1a]/50 backdrop-blur rounded-lg border border-[#3d3d3d] hover:border-pink-500/50 transition-all duration-300">
                 <p className="text-gray-400 mb-1 text-sm">Смена</p>
-                {candidateForm && (
-                  <div className="flex items-center gap-3">
-                    {getShiftDisplay(candidateForm.shift).icon}
-                    <div>
-                      <p className="font-medium text-white">{getShiftDisplay(candidateForm.shift).label}</p>
-                      <p className="text-sm text-gray-400">{getShiftDisplay(candidateForm.shift).text}</p>
-                    </div>
-                  </div>
-                )}
+                <p className="font-medium text-white">{candidateForm.shift}</p>
               </div>
               <div className="p-4 bg-[#1a1a1a]/50 backdrop-blur rounded-lg border border-[#3d3d3d] hover:border-pink-500/50 transition-all duration-300">
                 <p className="text-gray-400 mb-1 text-sm">Опыт работы</p>
