@@ -137,6 +137,7 @@ function TestResultsAdmin() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dialogues, setDialogues] = useState<Dialogue[]>([]);
+  const [dataLoaded, setDataLoaded] = useState(false);
   const [testResult, setTestResult] = useState<TestResultState>({
     candidateName: '',
     overallScore: 0,
@@ -172,103 +173,40 @@ function TestResultsAdmin() {
     dialogues: []
   });
 
-  // Mock data - in a real app, this would come from an API or context
+  // Mock data - поменяем на пустой объект с той же структурой
   const [testResults, setTestResults] = useState({
-    candidateName: 'Иван Петров',
-    overallScore: 4.4,
-    date: '24.07.2025',
-    duration: '48 минут',
-    parameters: [
-      {
-        name: 'Вовлеченность',
-        score: 3,
-        comment: 'Модель поддерживала диалог, но могла проявить больше инициативы',
-        icon: <MessageCircle className="w-6 h-6" />,
-        color: 'blue'
-      },
-      {
-        name: 'Обаяние и тон',
-        score: 4,
-        comment: 'Игривый и соблазнительный тон, но можно добавить больше кокетства',
-        icon: <Smile className="w-6 h-6" />,
-        color: 'purple'
-      },
-      {
-        name: 'Креативность',
-        score: 5,
-        comment: 'Уникальные и захватывающие предложения, идеально подошли для роли',
-        icon: <Lightbulb className="w-6 h-6" />,
-        color: 'yellow'
-      },
-      {
-        name: 'Адаптивность',
-        score: 4,
-        comment: 'Хорошая реакция на сомнения, но иногда ответы могли быть гибче',
-        icon: <RefreshCw className="w-6 h-6" />,
-        color: 'green'
-      },
-      {
-        name: 'Умение продавать себя',
-        score: 5,
-        comment: 'Отлично подчеркнула ценность контента, убедила клиента',
-        icon: <DollarSign className="w-6 h-6" />,
-        color: 'pink'
-      }
-    ],
-    recommendations: [
-      'Проявлять больше инициативы в начале диалога',
-      'Добавить больше эмоциональных элементов в общение',
-      'Продолжать использовать креативные подходы к презентации контента'
-    ],
+    candidateName: '',
+    overallScore: 0,
+    date: '',
+    duration: '',
+    parameters: [],
+    recommendations: [],
     pricingEvaluation: {
-      score: 4.2,
-      level: 'Высокая',
-      strengths: [
-        'Уверенно обосновывает стоимость контента',
-        'Не снижает цену при первом возражении',
-        'Подчеркивает уникальность предложения'
-      ],
-      weaknesses: [
-        'Иногда слишком настойчиво продвигает премиум-контент'
-      ],
-      details: 'Модель установила оптимальную цену за контент, которая соответствует рыночным ожиданиям. Хорошо справляется с возражениями по цене.'
+      score: 0,
+      strengths: [],
+      weaknesses: []
     },
     salesPerformance: {
       introduction: {
-        score: 4.2,
-        conversionRate: 85,
-        strengths: [
-          'Быстро устанавливает контакт',
-          'Создает доверительную атмосферу'
-        ],
+        score: 0,
+        conversionRate: 0,
+        strengths: [],
         weaknesses: []
       },
       warmup: {
-        score: 3.8,
-        conversionRate: 70,
-        strengths: [
-          'Эффективно подогревает интерес',
-          'Использует тизеры для привлечения внимания'
-        ],
-        weaknesses: [
-          'Иногда слишком быстро переходит к продаже'
-        ]
+        score: 0,
+        conversionRate: 0,
+        strengths: [],
+        weaknesses: []
       },
       sales: {
-        score: 4.5,
-        conversionRate: 65,
-        strengths: [
-          'Уверенно закрывает сделки',
-          'Хорошо работает с возражениями'
-        ],
-        weaknesses: [
-          'Может улучшить работу с ценовыми возражениями'
-        ]
+        score: 0,
+        conversionRate: 0,
+        strengths: [],
+        weaknesses: []
       }
     },
-    dialogues: [
-      // Исходные диалоги
-    ]
+    dialogues: []
   });
 
   // Function to get color class based on score
@@ -368,6 +306,7 @@ function TestResultsAdmin() {
       try {
         setLoading(true);
         setError(null);
+        setDataLoaded(false);
 
         console.log('Loading data for sessionId:', sessionId);
 
@@ -542,19 +481,26 @@ function TestResultsAdmin() {
           // Вызываем функцию диагностики после загрузки данных
           debug(sessionId, chats, testResult);
           
+          // После успешной загрузки данных
+          setDataLoaded(true);
         } else if (location.state?.employeeId) {
           // Если передан ID сотрудника через location.state, используем его
           const employeeId = location.state.employeeId;
           console.log('Loading data by employeeId:', employeeId);
           await loadChatHistory(employeeId);
+          
+          // После успешной загрузки данных
+          setDataLoaded(true);
         } else {
           // Если нет ни ID сессии, ни ID сотрудника, используем тестовые данные
           console.log('Using mock data, no sessionId or employeeId provided');
           setLoading(false);
+          setDataLoaded(true);
         }
       } catch (err) {
         console.error('Error loading data:', err);
         setError('Ошибка при загрузке данных. Используются тестовые данные.');
+        setDataLoaded(true);
       } finally {
         setLoading(false);
         
@@ -566,7 +512,7 @@ function TestResultsAdmin() {
     };
     
     loadData();
-  }, [sessionId, location.state?.employeeId]);
+  }, [sessionId, location.state?.employeeId, location.pathname]);
 
   // Функция для загрузки истории чатов по ID сотрудника
   const loadChatHistory = async (employeeId: string) => {
@@ -731,527 +677,578 @@ function TestResultsAdmin() {
     }
   };
 
+  // Добавим простую проверку на наличие данных
+  const hasRealData = () => {
+    return testResults.candidateName !== '' && testResults.parameters.length > 0;
+  };
+
   return (
-    <div className="min-h-screen bg-[#1a1a1a] text-gray-100 p-6">
-      {/* Header - убираем дублирующуюся кнопку назад */}
-      <div className="flex items-center gap-4 mb-8">
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-        >
-          <h1 className="text-2xl font-bold">Результаты теста модели (Админ-панель)</h1>
-          <p className="text-gray-400 mt-1">Кандидат: {testResults.candidateName} | Дата: {testResults.date} | Продолжительность: {testResults.duration}</p>
-        </motion.div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Overall Score Card */}
-        <motion.div 
-          className="lg:col-span-3 bg-[#2d2d2d] rounded-2xl p-6 border border-[#3d3d3d]"
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.5 }}
-        >
-          <div className="flex flex-col items-center justify-center">
-            <h2 className="text-xl font-semibold text-gray-300 mb-2">Общая оценка</h2>
-            <div>
-              <span className={`text-5xl font-bold ${getScoreColorClass(testResults.overallScore)}`}>
-                {testResults.overallScore}
-              </span>
-              <span className="text-2xl text-gray-400">/ 5</span>
-            </div>
-            <div className="flex items-center gap-1 mb-4">
-              {renderStars(Math.round(testResults.overallScore))}
-            </div>
-            <div className="w-full max-w-md h-3 bg-[#1a1a1a] rounded-full overflow-hidden">
-              <motion.div 
-                className="h-full bg-gradient-to-r from-pink-500 to-purple-500"
-                initial={{ width: 0 }}
-                animate={{ width: `${(testResults.overallScore / 5) * 100}%` }}
-                transition={{ duration: 1, delay: 0.5 }}
-              />
-            </div>
+    <div className="min-h-screen bg-[#1a1a1a] text-gray-100">
+      <div className="mx-auto py-8 px-4">
+        {/* Заголовок */}
+        <div className="mb-8 flex items-center gap-4">
+          <button 
+            onClick={() => navigate('/admin')} 
+            className="p-2 bg-[#2a2a2a] rounded-full hover:bg-[#3a3a3a] transition-all"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <div>
+            <h1 className="text-2xl font-bold">Результаты тестирования</h1>
+            <p className="text-gray-400">Детальный анализ диалогов</p>
           </div>
-        </motion.div>
+        </div>
 
-        {/* Detailed Parameters */}
-        <motion.div 
-          className="lg:col-span-2 bg-[#2d2d2d] rounded-2xl p-6 border border-[#3d3d3d]"
-          variants={containerVariants}
-          initial="hidden"
-          animate="visible"
-        >
-          <h3 className="text-xl font-semibold mb-6">Детальные результаты</h3>
-          
-          <div className="space-y-6">
-            {testResults.parameters.map((param, index) => (
-              <motion.div 
-                key={index}
-                variants={itemVariants}
-                className="bg-[#1a1a1a] rounded-lg p-4 border border-[#3d3d3d]"
-              >
-                <div className="flex items-start gap-4">
-                  <div className={`p-3 rounded-full ${getParameterBgClass(param.color)}`}>
-                    {param.icon}
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between mb-2">
-                      <h4 className="text-lg font-medium">{param.name}</h4>
-                      <div className="flex items-center gap-1">
-                        {renderStars(param.score)}
-                      </div>
+        {/* Основное содержимое - добавляем условие для отображения */}
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-20">
+            <div className="w-16 h-16 border-4 border-t-pink-500 border-pink-500/20 rounded-full animate-spin mb-4"></div>
+            <p className="text-gray-400">Загрузка результатов...</p>
+          </div>
+        ) : error ? (
+          <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-6 text-center">
+            <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold mb-2">Ошибка загрузки данных</h3>
+            <p className="text-gray-400">{error}</p>
+            <button 
+              onClick={() => window.location.reload()} 
+              className="mt-4 px-4 py-2 bg-[#2a2a2a] rounded-lg hover:bg-[#3a3a3a] transition-all"
+            >
+              Попробовать снова
+            </button>
+          </div>
+        ) : !dataLoaded ? (
+          <div className="flex flex-col items-center justify-center py-20">
+            <div className="w-16 h-16 border-4 border-t-pink-500 border-pink-500/20 rounded-full animate-spin mb-4"></div>
+            <p className="text-gray-400">Получение данных анализа...</p>
+          </div>
+        ) : (
+          <>
+            {/* Основной контент, показываем только если есть реальные данные */}
+            <div className="min-h-screen bg-[#1a1a1a] text-gray-100 p-6">
+              {/* Header - убираем дублирующуюся кнопку назад */}
+              <div className="flex items-center gap-4 mb-8">
+                <motion.div
+                  initial={{ opacity: 0, y: -20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.5 }}
+                >
+                  <h1 className="text-2xl font-bold">Результаты теста модели (Админ-панель)</h1>
+                  <p className="text-gray-400 mt-1">Кандидат: {testResults.candidateName} | Дата: {testResults.date} | Продолжительность: {testResults.duration}</p>
+                </motion.div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Overall Score Card */}
+                <motion.div 
+                  className="lg:col-span-3 bg-[#2d2d2d] rounded-2xl p-6 border border-[#3d3d3d]"
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ duration: 0.5 }}
+                >
+                  <div className="flex flex-col items-center justify-center">
+                    <h2 className="text-xl font-semibold text-gray-300 mb-2">Общая оценка</h2>
+                    <div>
+                      <span className={`text-5xl font-bold ${getScoreColorClass(testResults.overallScore)}`}>
+                        {testResults.overallScore}
+                      </span>
+                      <span className="text-2xl text-gray-400">/ 5</span>
                     </div>
-                    <p className="text-gray-400">{param.comment}</p>
+                    <div className="flex items-center gap-1 mb-4">
+                      {renderStars(Math.round(testResults.overallScore))}
+                    </div>
+                    <div className="w-full max-w-md h-3 bg-[#1a1a1a] rounded-full overflow-hidden">
+                      <motion.div 
+                        className="h-full bg-gradient-to-r from-pink-500 to-purple-500"
+                        initial={{ width: 0 }}
+                        animate={{ width: `${(testResults.overallScore / 5) * 100}%` }}
+                        transition={{ duration: 1, delay: 0.5 }}
+                      />
+                    </div>
                   </div>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </motion.div>
+                </motion.div>
 
-        {/* Pricing Evaluation */}
-        <motion.div 
-          className="bg-[#2d2d2d] rounded-2xl p-6 border border-[#3d3d3d]"
-          variants={fadeInVariants}
-          initial="hidden"
-          animate="visible"
-        >
-          <h3 className="text-xl font-semibold mb-6 flex items-center gap-2">
-            <DollarSign className="w-5 h-5 text-pink-500" />
-            Ценовая политика
-          </h3>
-          
-          <div className="space-y-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-gray-400">Оценка:</span>
-              <div className="flex items-center gap-2">
-                <span className={`text-xl font-bold ${getScoreColorClass(testResults.pricingEvaluation.score)}`}>
-                  {testResults.pricingEvaluation.score.toFixed(1)}
-                </span>
-                <span className="text-sm text-gray-400">/ 5</span>
-              </div>
-            </div>
-            
-            <div className="bg-[#1a1a1a] rounded-lg p-4 border border-[#3d3d3d]">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-gray-400">Уровень цен:</span>
-                <span className="font-medium text-blue-400">{testResults.pricingEvaluation.level}</span>
-              </div>
-              <p className="text-sm text-gray-300 mt-2">{testResults.pricingEvaluation.details}</p>
-            </div>
-
-            <div>
-              <h4 className="text-sm font-medium text-green-400 mb-2 flex items-center gap-1">
-                <CheckCircle className="w-4 h-4" />
-                Сильные стороны
-              </h4>
-              <ul className="text-sm space-y-1">
-                {testResults.pricingEvaluation.strengths.map((strength, idx) => (
-                  <li key={idx} className="text-gray-300 flex items-start gap-2">
-                    <span className="text-green-500 mt-1">•</span>
-                    {strength}
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            {testResults.pricingEvaluation.weaknesses.length > 0 && (
-              <div>
-                <h4 className="text-sm font-medium text-red-400 mb-2 flex items-center gap-1">
-                  <XCircle className="w-4 h-4" />
-                  Требуют улучшения
-                </h4>
-                <ul className="text-sm space-y-1">
-                  {testResults.pricingEvaluation.weaknesses.map((weakness, idx) => (
-                    <li key={idx} className="text-gray-300 flex items-start gap-2">
-                      <span className="text-red-500 mt-1">•</span>
-                      {weakness}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        </motion.div>
-
-        {/* Sales Performance Section */}
-        <motion.div 
-          className="lg:col-span-3 bg-[#2d2d2d] rounded-2xl p-6 border border-[#3d3d3d] mb-6"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.3 }}
-        >
-          <h2 className="text-xl font-semibold mb-6 flex items-center gap-2">
-            <ShoppingCart className="w-6 h-6 text-pink-500" />
-            Эффективность продаж
-          </h2>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Introduction Section */}
-            <div className="bg-[#1a1a1a] rounded-xl p-5 border border-[#3d3d3d]">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <Users className="w-5 h-5 text-blue-500" />
-                  <h3 className="font-semibold">Знакомство</h3>
-                 </div>
-                <div className={`px-2 py-1 rounded-full text-sm font-medium ${getScoreColorClass(testResults.salesPerformance.introduction.score)}`}>
-                  {testResults.salesPerformance.introduction.score.toFixed(1)}
-                </div>
-              </div>
-
-              <div className="mb-4">
-                <div className="flex justify-between text-sm mb-1">
-                  <span className="text-gray-400">Конверсия</span>
-                  <span className="font-medium">{testResults.salesPerformance.introduction.conversionRate}%</span>
-                </div>
-                <div className="h-2 bg-[#2d2d2d] rounded-full overflow-hidden">
-                  <motion.div 
-                    className={`h-full ${getProgressBarColor(testResults.salesPerformance.introduction.conversionRate)}`}
-                    initial={{ width: 0 }}
-                    animate={{ width: `${testResults.salesPerformance.introduction.conversionRate}%` }}
-                    transition={{ duration: 1, delay: 0.7 }}
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <div>
-                  <h4 className="text-sm font-medium text-green-400 mb-2 flex items-center gap-1">
-                    <CheckCircle className="w-4 h-4" />
-                    Сильные стороны
-                  </h4>
-                  <ul className="text-sm space-y-1">
-                    {testResults.salesPerformance.introduction.strengths.map((strength, idx) => (
-                      <li key={idx} className="text-gray-300 flex items-start gap-2">
-                        <span className="text-green-500 mt-1">•</span>
-                        {strength}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-
-                {testResults.salesPerformance.introduction.weaknesses.length > 0 && (
-                  <div>
-                    <h4 className="text-sm font-medium text-red-400 mb-2 flex items-center gap-1">
-                      <XCircle className="w-4 h-4" />
-                      Области для улучшения
-                    </h4>
-                    <ul className="text-sm space-y-1">
-                      {testResults.salesPerformance.introduction.weaknesses.map((weakness, idx) => (
-                        <li key={idx} className="text-gray-300 flex items-start gap-2">
-                          <span className="text-red-500 mt-1">•</span>
-                          {weakness}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Warmup Section */}
-            <div className="bg-[#1a1a1a] rounded-xl p-5 border border-[#3d3d3d]">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <Flame className="w-5 h-5 text-orange-500" />
-                  <h3 className="font-semibold">Прогрев</h3>
-                </div>
-                <div className={`px-2 py-1 rounded-full text-sm font-medium ${getScoreColorClass(testResults.salesPerformance.warmup.score)}`}>
-                  {testResults.salesPerformance.warmup.score.toFixed(1)}
-                </div>
-              </div>
-
-              <div className="mb-4">
-                <div className="flex justify-between text-sm mb-1">
-                  <span className="text-gray-400">Конверсия</span>
-                  <span className="font-medium">{testResults.salesPerformance.warmup.conversionRate}%</span>
-                </div>
-                <div className="h-2 bg-[#2d2d2d] rounded-full overflow-hidden">
-                  <motion.div 
-                    className={`h-full ${getProgressBarColor(testResults.salesPerformance.warmup.conversionRate)}`}
-                    initial={{ width: 0 }}
-                    animate={{ width: `${testResults.salesPerformance.warmup.conversionRate}%` }}
-                    transition={{ duration: 1, delay: 0.8 }}
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <div>
-                  <h4 className="text-sm font-medium text-green-400 mb-2 flex items-center gap-1">
-                    <CheckCircle className="w-4 h-4" />
-                    Сильные стороны
-                  </h4>
-                  <ul className="text-sm space-y-1">
-                    {testResults.salesPerformance.warmup.strengths.map((strength, idx) => (
-                      <li key={idx} className="text-gray-300 flex items-start gap-2">
-                        <span className="text-green-500 mt-1">•</span>
-                        {strength}
-                      </li>
-                    ))}
-                   </ul>
-                </div>
-
-                {testResults.salesPerformance.warmup.weaknesses.length > 0 && (
-                  <div>
-                    <h4 className="text-sm font-medium text-red-400 mb-2 flex items-center gap-1">
-                      <XCircle className="w-4 h-4" />
-                      Области для улучшения
-                    </h4>
-                    <ul className="text-sm space-y-1">
-                      {testResults.salesPerformance.warmup.weaknesses.map((weakness, idx) => (
-                        <li key={idx} className="text-gray-300 flex items-start gap-2">
-                          <span className="text-red-500 mt-1">•</span>
-                          {weakness}
-                        </li>
-                      ))}
-                    </ul>
-                 </div>
-                )}
-              </div>
-            </div>
-
-            {/* Sales Section */}
-            <div className="bg-[#1a1a1a] rounded-xl p-5 border border-[#3d3d3d]">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <DollarSign className="w-5 h-5 text-green-500" />
-                  <h3 className="font-semibold">Продажи</h3>
-                </div>
-                <div className={`px-2 py-1 rounded-full text-sm font-medium ${getScoreColorClass(testResults.salesPerformance.sales.score)}`}>
-                  {testResults.salesPerformance.sales.score.toFixed(1)}
-                </div>
-              </div>
-
-              <div className="mb-4">
-                <div className="flex justify-between text-sm mb-1">
-                  <span className="text-gray-400">Конверсия</span>
-                  <span className="font-medium">{testResults.salesPerformance.sales.conversionRate}%</span>
-                </div>
-                <div className="h-2 bg-[#2d2d2d] rounded-full overflow-hidden">
-                  <motion.div 
-                    className={`h-full ${getProgressBarColor(testResults.salesPerformance.sales.conversionRate)}`}
-                    initial={{ width: 0 }}
-                    animate={{ width: `${testResults.salesPerformance.sales.conversionRate}%` }}
-                    transition={{ duration: 1, delay: 0.9 }}
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <div>
-                  <h4 className="text-sm font-medium text-green-400 mb-2 flex items-center gap-1">
-                    <CheckCircle className="w-4 h-4" />
-                    Сильные стороны
-                  </h4>
-                  <ul className="text-sm space-y-1">
-                    {testResults.salesPerformance.sales.strengths.map((strength, idx) => (
-                      <li key={idx} className="text-gray-300 flex items-start gap-2">
-                        <span className="text-green-500 mt-1">•</span>
-                        {strength}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-
-                {testResults.salesPerformance.sales.weaknesses.length > 0 && (
-                  <div>
-                    <h4 className="text-sm font-medium text-red-400 mb-2 flex items-center gap-1">
-                      <XCircle className="w-4 h-4" />
-                      Области для улучшения
-                    </h4>
-                    <ul className="text-sm space-y-1">
-                      {testResults.salesPerformance.sales.weaknesses.map((weakness, idx) => (
-                        <li key={idx} className="text-gray-300 flex items-start gap-2">
-                          <span className="text-red-500 mt-1">•</span>
-                          {weakness}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </motion.div>
-
-        {/* Recommendations */}
-        <motion.div 
-          className="bg-[#2d2d2d] rounded-2xl p-6 border border-[#3d3d3d]"
-          variants={fadeInVariants}
-          initial="hidden"
-          animate="visible"
-        >
-          <h3 className="text-xl font-semibold mb-6">Рекомендации</h3>
-          
-          <div className="space-y-4">
-            {testResults.recommendations.map((rec, index) => (
-              <div key={index} className="flex items-start gap-3">
-                <div className="w-6 h-6 rounded-full bg-gradient-to-r from-pink-500 to-purple-500 flex items-center justify-center flex-shrink-0">
-                  <span className="text-sm font-bold">{index + 1}</span>
-                </div>
-                <p className="text-gray-300">{rec}</p>
-              </div>
-            ))}
-          </div>
-
-          <div className="mt-8 space-y-4">
-            <h4 className="text-lg font-medium">Действия</h4>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <button className="flex items-center justify-center gap-2 p-3 bg-[#1a1a1a] rounded-lg border border-[#3d3d3d] hover:bg-[#3d3d3d] transition-colors">
-                <Download className="w-5 h-5 text-blue-400" />
-                <span>Скачать отчет</span>
-              </button>
-              <button className="flex items-center justify-center gap-2 p-3 bg-[#1a1a1a] rounded-lg border border-[#3d3d3d] hover:bg-[#3d3d3d] transition-colors">
-                <Share2 className="w-5 h-5 text-green-400" />
-                <span>Поделиться</span>
-              </button>
-              <button className="flex items-center justify-center gap-2 p-3 bg-[#1a1a1a] rounded-lg border border-[#3d3d3d] hover:bg-[#3d3d3d] transition-colors sm:col-span-2">
-                <Printer className="w-5 h-5 text-purple-400" />
-                <span>Распечатать результаты</span>
-              </button>
-            </div>
-          </div>
-        </motion.div>
-
-        {/* Dialogue History */}
-        <motion.div 
-          className="lg:col-span-2 bg-[#2d2d2d] rounded-2xl p-6 border border-[#3d3d3d]"
-          variants={fadeInVariants}
-          initial="hidden"
-          animate="visible"
-        >
-          <h3 className="text-xl font-semibold mb-6 flex items-center gap-2">
-            <MessageCircle className="w-5 h-5 text-purple-500" />
-            История диалогов
-          </h3>
-
-          {dialogues.length > 0 ? (
-            <div className="space-y-6">
-              {/* Dialog List */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {dialogues.map((dialogue) => (
-                <div 
-                  key={dialogue.id} 
-                    className={`p-4 rounded-lg border ${selectedDialogue === dialogue.id ? 'bg-[#3d3d3d] border-purple-500' : 'bg-[#1a1a1a] border-[#3d3d3d] hover:bg-[#262626] hover:border-[#4d4d4d]'} cursor-pointer transition-colors`}
-                    onClick={() => setSelectedDialogue(dialogue.id)}
-                  >
-                    <div className="flex justify-between items-start mb-3">
-                        <h4 className="font-medium">{dialogue.title}</h4>
-                      <span className="text-xs px-2 py-1 rounded-full bg-[#2d2d2d] text-gray-300">{dialogue.date}</span>
+                {/* Detailed Parameters */}
+                <motion.div 
+                  className="lg:col-span-2 bg-[#2d2d2d] rounded-2xl p-6 border border-[#3d3d3d]"
+                  variants={containerVariants}
+                  initial="hidden"
+                  animate="visible"
+                >
+                  <h3 className="text-xl font-semibold mb-6">Детальные результаты</h3>
+                  
+                  <div className="space-y-6">
+                    {testResults.parameters.map((param, index) => (
+                      <motion.div 
+                        key={index}
+                        variants={itemVariants}
+                        className="bg-[#1a1a1a] rounded-lg p-4 border border-[#3d3d3d]"
+                      >
+                        <div className="flex items-start gap-4">
+                          <div className={`p-3 rounded-full ${getParameterBgClass(param.color)}`}>
+                            {param.icon}
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex items-center justify-between mb-2">
+                              <h4 className="text-lg font-medium">{param.name}</h4>
+                              <div className="flex items-center gap-1">
+                                {renderStars(param.score)}
+                              </div>
+                            </div>
+                            <p className="text-gray-400">{param.comment}</p>
+                          </div>
                         </div>
-                    <div className="flex items-center justify-between text-sm text-gray-400">
-                      <span>{dialogue.duration}</span>
-                      {dialogue.messages.length > 0 ? (
-                        <span className="flex items-center gap-1">
-                          <MessageCircle className="w-4 h-4" />
-                          {dialogue.messages.length} сообщений
-                        </span>
-                      ) : (
-                        <span className="text-yellow-500 flex items-center gap-1">
-                          <AlertCircle className="w-4 h-4" />
-                          Нет сообщений
-                        </span>
-                      )}
-                        </div>
-                      </div>
-                ))}
+                      </motion.div>
+                    ))}
                   </div>
+                </motion.div>
 
-              {/* Selected Dialog */}
-              {selectedDialogue && (
-                <div className="mt-6 bg-[#1a1a1a] rounded-lg border border-[#3d3d3d] p-4">
-                  <h4 className="font-medium mb-4">
-                    {dialogues.find(d => d.id === selectedDialogue)?.title}
-                  </h4>
+                {/* Pricing Evaluation */}
+                <motion.div 
+                  className="bg-[#2d2d2d] rounded-2xl p-6 border border-[#3d3d3d]"
+                  variants={fadeInVariants}
+                  initial="hidden"
+                  animate="visible"
+                >
+                  <h3 className="text-xl font-semibold mb-6 flex items-center gap-2">
+                    <DollarSign className="w-5 h-5 text-pink-500" />
+                    Ценовая политика
+                  </h3>
                   
                   <div className="space-y-4">
-                    {selectedDialogue && dialogues.find(d => d.id === selectedDialogue)?.messages?.length > 0 ? (
-                      dialogues.find(d => d.id === selectedDialogue)?.messages.map((message: DialogueMessage) => {
-                        const imageMatch = message.content.match(/\[Фото (\d+)\] \[(.*?)\]/);
-                        return (
-                          <div
-                            key={message.id}
-                            className={`flex ${message.isOwn ? 'justify-end' : 'justify-start'}`}
-                          >
-                            <div
-                              className={`max-w-[80%] p-3 rounded-lg ${
-                                message.isOwn
-                                  ? 'bg-purple-900 text-white rounded-tr-none' 
-                                  : 'bg-[#2d2d2d] text-gray-200 rounded-tl-none'
-                              }`}
-                            >
-                              <div className="text-xs text-gray-400 mb-1 flex justify-between">
-                                <span>{message.isOwn ? 'Соискатель' : 'AI-клиент'}</span>
-                                <span>{message.time}</span>
-                              </div>
-                              {imageMatch ? (
-                                <div className="mt-1 rounded-md overflow-hidden">
-                                  <img 
-                                    src={`/foto/${imageMatch[1]}.jpg`}
-                                    alt="Отправленное изображение" 
-                                    className="max-w-[200px] h-auto rounded-md border border-[#3d3d3d]"
-                                  />
-                                </div>
-                              ) : (
-                                <p>{message.content}</p>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })
-                    ) : (
-                      <div className="text-center py-8 text-gray-400">
-                        <AlertCircle className="w-10 h-10 mx-auto mb-2 text-yellow-500" />
-                        <p>В этом диалоге пока нет сообщений.</p>
-                        <p className="text-sm mt-2">
-                          Возможно, сессия ещё не начата или была прервана.
-                        </p>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-gray-400">Оценка:</span>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-xl font-bold ${getScoreColorClass(testResults.pricingEvaluation.score)}`}>
+                          {testResults.pricingEvaluation.score.toFixed(1)}
+                        </span>
+                        <span className="text-sm text-gray-400">/ 5</span>
+                      </div>
+                    </div>
+                    
+                    <div className="bg-[#1a1a1a] rounded-lg p-4 border border-[#3d3d3d]">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-gray-400">Уровень цен:</span>
+                        <span className="font-medium text-blue-400">{testResults.pricingEvaluation.level}</span>
+                      </div>
+                      <p className="text-sm text-gray-300 mt-2">{testResults.pricingEvaluation.details}</p>
+                    </div>
+
+                    <div>
+                      <h4 className="text-sm font-medium text-green-400 mb-2 flex items-center gap-1">
+                        <CheckCircle className="w-4 h-4" />
+                        Сильные стороны
+                      </h4>
+                      <ul className="text-sm space-y-1">
+                        {testResults.pricingEvaluation.strengths.map((strength, idx) => (
+                          <li key={idx} className="text-gray-300 flex items-start gap-2">
+                            <span className="text-green-500 mt-1">•</span>
+                            {strength}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    {testResults.pricingEvaluation.weaknesses.length > 0 && (
+                      <div>
+                        <h4 className="text-sm font-medium text-red-400 mb-2 flex items-center gap-1">
+                          <XCircle className="w-4 h-4" />
+                          Требуют улучшения
+                        </h4>
+                        <ul className="text-sm space-y-1">
+                          {testResults.pricingEvaluation.weaknesses.map((weakness, idx) => (
+                            <li key={idx} className="text-gray-300 flex items-start gap-2">
+                              <span className="text-red-500 mt-1">•</span>
+                              {weakness}
+                            </li>
+                          ))}
+                        </ul>
                       </div>
                     )}
                   </div>
+                </motion.div>
+
+                {/* Sales Performance Section */}
+                <motion.div 
+                  className="lg:col-span-3 bg-[#2d2d2d] rounded-2xl p-6 border border-[#3d3d3d] mb-6"
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.5, delay: 0.3 }}
+                >
+                  <h2 className="text-xl font-semibold mb-6 flex items-center gap-2">
+                    <ShoppingCart className="w-6 h-6 text-pink-500" />
+                    Эффективность продаж
+                  </h2>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {/* Introduction Section */}
+                    <div className="bg-[#1a1a1a] rounded-xl p-5 border border-[#3d3d3d]">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-2">
+                          <Users className="w-5 h-5 text-blue-500" />
+                          <h3 className="font-semibold">Знакомство</h3>
+                         </div>
+                        <div className={`px-2 py-1 rounded-full text-sm font-medium ${getScoreColorClass(testResults.salesPerformance.introduction.score)}`}>
+                          {testResults.salesPerformance.introduction.score.toFixed(1)}
+                        </div>
+                      </div>
+
+                      <div className="mb-4">
+                        <div className="flex justify-between text-sm mb-1">
+                          <span className="text-gray-400">Конверсия</span>
+                          <span className="font-medium">{testResults.salesPerformance.introduction.conversionRate}%</span>
+                        </div>
+                        <div className="h-2 bg-[#2d2d2d] rounded-full overflow-hidden">
+                          <motion.div 
+                            className={`h-full ${getProgressBarColor(testResults.salesPerformance.introduction.conversionRate)}`}
+                            initial={{ width: 0 }}
+                            animate={{ width: `${testResults.salesPerformance.introduction.conversionRate}%` }}
+                            transition={{ duration: 1, delay: 0.7 }}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
+                        <div>
+                          <h4 className="text-sm font-medium text-green-400 mb-2 flex items-center gap-1">
+                            <CheckCircle className="w-4 h-4" />
+                            Сильные стороны
+                          </h4>
+                          <ul className="text-sm space-y-1">
+                            {testResults.salesPerformance.introduction.strengths.map((strength, idx) => (
+                              <li key={idx} className="text-gray-300 flex items-start gap-2">
+                                <span className="text-green-500 mt-1">•</span>
+                                {strength}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+
+                        {testResults.salesPerformance.introduction.weaknesses.length > 0 && (
+                          <div>
+                            <h4 className="text-sm font-medium text-red-400 mb-2 flex items-center gap-1">
+                              <XCircle className="w-4 h-4" />
+                              Области для улучшения
+                            </h4>
+                            <ul className="text-sm space-y-1">
+                              {testResults.salesPerformance.introduction.weaknesses.map((weakness, idx) => (
+                                <li key={idx} className="text-gray-300 flex items-start gap-2">
+                                  <span className="text-red-500 mt-1">•</span>
+                                  {weakness}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Warmup Section */}
+                    <div className="bg-[#1a1a1a] rounded-xl p-5 border border-[#3d3d3d]">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-2">
+                          <Flame className="w-5 h-5 text-orange-500" />
+                          <h3 className="font-semibold">Прогрев</h3>
+                        </div>
+                        <div className={`px-2 py-1 rounded-full text-sm font-medium ${getScoreColorClass(testResults.salesPerformance.warmup.score)}`}>
+                          {testResults.salesPerformance.warmup.score.toFixed(1)}
+                        </div>
+                      </div>
+
+                      <div className="mb-4">
+                        <div className="flex justify-between text-sm mb-1">
+                          <span className="text-gray-400">Конверсия</span>
+                          <span className="font-medium">{testResults.salesPerformance.warmup.conversionRate}%</span>
+                        </div>
+                        <div className="h-2 bg-[#2d2d2d] rounded-full overflow-hidden">
+                          <motion.div 
+                            className={`h-full ${getProgressBarColor(testResults.salesPerformance.warmup.conversionRate)}`}
+                            initial={{ width: 0 }}
+                            animate={{ width: `${testResults.salesPerformance.warmup.conversionRate}%` }}
+                            transition={{ duration: 1, delay: 0.8 }}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
+                        <div>
+                          <h4 className="text-sm font-medium text-green-400 mb-2 flex items-center gap-1">
+                            <CheckCircle className="w-4 h-4" />
+                            Сильные стороны
+                          </h4>
+                          <ul className="text-sm space-y-1">
+                            {testResults.salesPerformance.warmup.strengths.map((strength, idx) => (
+                              <li key={idx} className="text-gray-300 flex items-start gap-2">
+                                <span className="text-green-500 mt-1">•</span>
+                                {strength}
+                              </li>
+                            ))}
+                           </ul>
+                        </div>
+
+                        {testResults.salesPerformance.warmup.weaknesses.length > 0 && (
+                          <div>
+                            <h4 className="text-sm font-medium text-red-400 mb-2 flex items-center gap-1">
+                              <XCircle className="w-4 h-4" />
+                              Области для улучшения
+                            </h4>
+                            <ul className="text-sm space-y-1">
+                              {testResults.salesPerformance.warmup.weaknesses.map((weakness, idx) => (
+                                <li key={idx} className="text-gray-300 flex items-start gap-2">
+                                  <span className="text-red-500 mt-1">•</span>
+                                  {weakness}
+                                </li>
+                              ))}
+                            </ul>
+                         </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Sales Section */}
+                    <div className="bg-[#1a1a1a] rounded-xl p-5 border border-[#3d3d3d]">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-2">
+                          <DollarSign className="w-5 h-5 text-green-500" />
+                          <h3 className="font-semibold">Продажи</h3>
+                        </div>
+                        <div className={`px-2 py-1 rounded-full text-sm font-medium ${getScoreColorClass(testResults.salesPerformance.sales.score)}`}>
+                          {testResults.salesPerformance.sales.score.toFixed(1)}
+                        </div>
+                      </div>
+
+                      <div className="mb-4">
+                        <div className="flex justify-between text-sm mb-1">
+                          <span className="text-gray-400">Конверсия</span>
+                          <span className="font-medium">{testResults.salesPerformance.sales.conversionRate}%</span>
+                        </div>
+                        <div className="h-2 bg-[#2d2d2d] rounded-full overflow-hidden">
+                          <motion.div 
+                            className={`h-full ${getProgressBarColor(testResults.salesPerformance.sales.conversionRate)}`}
+                            initial={{ width: 0 }}
+                            animate={{ width: `${testResults.salesPerformance.sales.conversionRate}%` }}
+                            transition={{ duration: 1, delay: 0.9 }}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
+                        <div>
+                          <h4 className="text-sm font-medium text-green-400 mb-2 flex items-center gap-1">
+                            <CheckCircle className="w-4 h-4" />
+                            Сильные стороны
+                          </h4>
+                          <ul className="text-sm space-y-1">
+                            {testResults.salesPerformance.sales.strengths.map((strength, idx) => (
+                              <li key={idx} className="text-gray-300 flex items-start gap-2">
+                                <span className="text-green-500 mt-1">•</span>
+                                {strength}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+
+                        {testResults.salesPerformance.sales.weaknesses.length > 0 && (
+                          <div>
+                            <h4 className="text-sm font-medium text-red-400 mb-2 flex items-center gap-1">
+                              <XCircle className="w-4 h-4" />
+                              Области для улучшения
+                            </h4>
+                            <ul className="text-sm space-y-1">
+                              {testResults.salesPerformance.sales.weaknesses.map((weakness, idx) => (
+                                <li key={idx} className="text-gray-300 flex items-start gap-2">
+                                  <span className="text-red-500 mt-1">•</span>
+                                  {weakness}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+
+                {/* Recommendations */}
+                <motion.div 
+                  className="bg-[#2d2d2d] rounded-2xl p-6 border border-[#3d3d3d]"
+                  variants={fadeInVariants}
+                  initial="hidden"
+                  animate="visible"
+                >
+                  <h3 className="text-xl font-semibold mb-6">Рекомендации</h3>
+                  
+                  <div className="space-y-4">
+                    {testResults.recommendations.map((rec, index) => (
+                      <div key={index} className="flex items-start gap-3">
+                        <div className="w-6 h-6 rounded-full bg-gradient-to-r from-pink-500 to-purple-500 flex items-center justify-center flex-shrink-0">
+                          <span className="text-sm font-bold">{index + 1}</span>
+                        </div>
+                        <p className="text-gray-300">{rec}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-8 space-y-4">
+                    <h4 className="text-lg font-medium">Действия</h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <button className="flex items-center justify-center gap-2 p-3 bg-[#1a1a1a] rounded-lg border border-[#3d3d3d] hover:bg-[#3d3d3d] transition-colors">
+                        <Download className="w-5 h-5 text-blue-400" />
+                        <span>Скачать отчет</span>
+                      </button>
+                      <button className="flex items-center justify-center gap-2 p-3 bg-[#1a1a1a] rounded-lg border border-[#3d3d3d] hover:bg-[#3d3d3d] transition-colors">
+                        <Share2 className="w-5 h-5 text-green-400" />
+                        <span>Поделиться</span>
+                      </button>
+                      <button className="flex items-center justify-center gap-2 p-3 bg-[#1a1a1a] rounded-lg border border-[#3d3d3d] hover:bg-[#3d3d3d] transition-colors sm:col-span-2">
+                        <Printer className="w-5 h-5 text-purple-400" />
+                        <span>Распечатать результаты</span>
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+
+                {/* Dialogue History */}
+                <motion.div 
+                  className="lg:col-span-2 bg-[#2d2d2d] rounded-2xl p-6 border border-[#3d3d3d]"
+                  variants={fadeInVariants}
+                  initial="hidden"
+                  animate="visible"
+                >
+                  <h3 className="text-xl font-semibold mb-6 flex items-center gap-2">
+                    <MessageCircle className="w-5 h-5 text-purple-500" />
+                    История диалогов
+                  </h3>
+
+                  {dialogues.length > 0 ? (
+                    <div className="space-y-6">
+                      {/* Dialog List */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {dialogues.map((dialogue) => (
+                        <div 
+                          key={dialogue.id} 
+                            className={`p-4 rounded-lg border ${selectedDialogue === dialogue.id ? 'bg-[#3d3d3d] border-purple-500' : 'bg-[#1a1a1a] border-[#3d3d3d] hover:bg-[#262626] hover:border-[#4d4d4d]'} cursor-pointer transition-colors`}
+                            onClick={() => setSelectedDialogue(dialogue.id)}
+                          >
+                            <div className="flex justify-between items-start mb-3">
+                                <h4 className="font-medium">{dialogue.title}</h4>
+                              <span className="text-xs px-2 py-1 rounded-full bg-[#2d2d2d] text-gray-300">{dialogue.date}</span>
+                                </div>
+                            <div className="flex items-center justify-between text-sm text-gray-400">
+                              <span>{dialogue.duration}</span>
+                              {dialogue.messages.length > 0 ? (
+                                <span className="flex items-center gap-1">
+                                  <MessageCircle className="w-4 h-4" />
+                                  {dialogue.messages.length} сообщений
+                                </span>
+                              ) : (
+                                <span className="text-yellow-500 flex items-center gap-1">
+                                  <AlertCircle className="w-4 h-4" />
+                                  Нет сообщений
+                                </span>
+                              )}
+                                </div>
+                              </div>
+                        ))}
+                          </div>
+
+                      {/* Selected Dialog */}
+                      {selectedDialogue && (
+                        <div className="mt-6 bg-[#1a1a1a] rounded-lg border border-[#3d3d3d] p-4">
+                          <h4 className="font-medium mb-4">
+                            {dialogues.find(d => d.id === selectedDialogue)?.title}
+                          </h4>
+                          
+                          <div className="space-y-4">
+                            {selectedDialogue && dialogues.find(d => d.id === selectedDialogue)?.messages?.length > 0 ? (
+                              dialogues.find(d => d.id === selectedDialogue)?.messages.map((message: DialogueMessage) => {
+                                const imageMatch = message.content.match(/\[Фото (\d+)\] \[(.*?)\]/);
+                                return (
+                                  <div
+                                    key={message.id}
+                                    className={`flex ${message.isOwn ? 'justify-end' : 'justify-start'}`}
+                                  >
+                                    <div
+                                      className={`max-w-[80%] p-3 rounded-lg ${
+                                        message.isOwn
+                                          ? 'bg-purple-900 text-white rounded-tr-none' 
+                                          : 'bg-[#2d2d2d] text-gray-200 rounded-tl-none'
+                                      }`}
+                                    >
+                                      <div className="text-xs text-gray-400 mb-1 flex justify-between">
+                                        <span>{message.isOwn ? 'Соискатель' : 'AI-клиент'}</span>
+                                        <span>{message.time}</span>
+                                      </div>
+                                      {imageMatch ? (
+                                        <div className="mt-1 rounded-md overflow-hidden">
+                                          <img 
+                                            src={`/foto/${imageMatch[1]}.jpg`}
+                                            alt="Отправленное изображение" 
+                                            className="max-w-[200px] h-auto rounded-md border border-[#3d3d3d]"
+                                          />
+                                        </div>
+                                      ) : (
+                                        <p>{message.content}</p>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })
+                            ) : (
+                              <div className="text-center py-8 text-gray-400">
+                                <AlertCircle className="w-10 h-10 mx-auto mb-2 text-yellow-500" />
+                                <p>В этом диалоге пока нет сообщений.</p>
+                                <p className="text-sm mt-2">
+                                  Возможно, сессия ещё не начата или была прервана.
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                            </div>
+                          )}
+                        </div>
+                  ) : (
+                    <div className="text-center py-12 bg-[#1a1a1a] rounded-lg border border-[#3d3d3d]">
+                      <AlertCircle className="w-12 h-12 mx-auto mb-4 text-yellow-500" />
+                      <h4 className="text-xl font-medium mb-2">История диалогов отсутствует</h4>
+                      <p className="text-gray-400 mb-4">Для данной сессии не найдены диалоги.</p>
+                      
+                      <div className="max-w-lg mx-auto text-left bg-[#262626] p-4 rounded-lg border border-[#3d3d3d]">
+                        <h5 className="font-medium mb-2 flex items-center gap-2">
+                          <AlertCircle className="w-5 h-5 text-yellow-500" />
+                          Диагностика данных
+                        </h5>
+                        <ul className="space-y-2 text-sm">
+                          <li className="flex items-start gap-2">
+                            <span className="text-yellow-500 mt-1">•</span>
+                            <span>ID сессии: <code className="bg-[#1a1a1a] px-1 py-0.5 rounded">{sessionId || 'отсутствует'}</code></span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <span className="text-yellow-500 mt-1">•</span>
+                            <span>Чаты: {chats.length ? `${chats.length} (все пустые)` : 'не найдены'}</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <span className="text-yellow-500 mt-1">•</span>
+                            <span>Анализ: {testResult ? 'доступен' : 'отсутствует'}</span>
+                          </li>
+                        </ul>
+                        
+                        <div className="mt-4 text-xs text-gray-400">
+                          <p>Возможные причины проблемы:</p>
+                          <ol className="list-decimal pl-5 mt-1 space-y-1">
+                            <li>Тестовая сессия не была завершена</li>
+                            <li>Сообщения не были добавлены в чаты</li>
+                            <li>Результаты анализа не были сгенерированы</li>
+                          </ol>
+                        </div>
+                      </div>
                     </div>
                   )}
-                </div>
-          ) : (
-            <div className="text-center py-12 bg-[#1a1a1a] rounded-lg border border-[#3d3d3d]">
-              <AlertCircle className="w-12 h-12 mx-auto mb-4 text-yellow-500" />
-              <h4 className="text-xl font-medium mb-2">История диалогов отсутствует</h4>
-              <p className="text-gray-400 mb-4">Для данной сессии не найдены диалоги.</p>
-              
-              <div className="max-w-lg mx-auto text-left bg-[#262626] p-4 rounded-lg border border-[#3d3d3d]">
-                <h5 className="font-medium mb-2 flex items-center gap-2">
-                  <AlertCircle className="w-5 h-5 text-yellow-500" />
-                  Диагностика данных
-                </h5>
-                <ul className="space-y-2 text-sm">
-                  <li className="flex items-start gap-2">
-                    <span className="text-yellow-500 mt-1">•</span>
-                    <span>ID сессии: <code className="bg-[#1a1a1a] px-1 py-0.5 rounded">{sessionId || 'отсутствует'}</code></span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="text-yellow-500 mt-1">•</span>
-                    <span>Чаты: {chats.length ? `${chats.length} (все пустые)` : 'не найдены'}</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="text-yellow-500 mt-1">•</span>
-                    <span>Анализ: {testResult ? 'доступен' : 'отсутствует'}</span>
-                  </li>
-                </ul>
-                
-                <div className="mt-4 text-xs text-gray-400">
-                  <p>Возможные причины проблемы:</p>
-                  <ol className="list-decimal pl-5 mt-1 space-y-1">
-                    <li>Тестовая сессия не была завершена</li>
-                    <li>Сообщения не были добавлены в чаты</li>
-                    <li>Результаты анализа не были сгенерированы</li>
-                  </ol>
-                </div>
+                </motion.div>
               </div>
             </div>
-          )}
-        </motion.div>
+          </>
+        )}
       </div>
     </div>
   );

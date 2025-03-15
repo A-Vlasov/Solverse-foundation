@@ -1313,6 +1313,13 @@ function Chat() {
         }
       }));
     }
+    
+    // Прокручиваем чат к последнему сообщению после переключения пользователя
+    setTimeout(() => {
+      if (chatContainerRef.current) {
+        chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+      }
+    }, 0);
   };
 
   const currentUser = users.find(user => user.name === selectedUser);
@@ -1329,11 +1336,11 @@ function Chat() {
 
   // Добавляем useEffect для автоматической прокрутки чата к последнему сообщению
   useEffect(() => {
-    // Прокручиваем чат к последнему сообщению при изменении истории чата
+    // Прокручиваем чат к последнему сообщению при изменении истории чата или смене пользователя
     if (chatContainerRef.current) {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
     }
-  }, [chatHistories]);
+  }, [chatHistories, selectedUser]);
 
   // Обработчик для кнопки "До свидания"
   const handleGoodbye = () => {
