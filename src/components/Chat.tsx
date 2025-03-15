@@ -262,7 +262,7 @@ function generateUUID() {
 function Chat() {
   const [message, setMessage] = useState('');
   const [selectedUser, setSelectedUser] = useState('Marcus');
-  const [timeRemaining, setTimeRemaining] = useState(300);
+  const [timeRemaining, setTimeRemaining] = useState(1200);
   const [showCongratulations, setShowCongratulations] = useState(false);
   const [calculatingResults, setCalculatingResults] = useState(false);
   const [isSessionComplete, setIsSessionComplete] = useState(false);
