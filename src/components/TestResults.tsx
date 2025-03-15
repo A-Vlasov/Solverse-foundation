@@ -29,6 +29,7 @@ function TestResults() {
   const [error, setError] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<TestResult | null>(null);
   const [employeeName, setEmployeeName] = useState('');
+  const [employeeId, setEmployeeId] = useState('');
   
   useEffect(() => {
     const fetchData = async () => {
@@ -53,7 +54,10 @@ function TestResults() {
         // Загружаем информацию о соискателе
         try {
           const employee = await getEmployee(result.employee_id);
-          setEmployeeName(`${employee.first_name} ${employee.last_name}`);
+          if (employee) {
+            setEmployeeId(employee.id);
+            setEmployeeName(`${employee.first_name}`);
+          }
         } catch (employeeError) {
           console.error('Error fetching employee:', employeeError);
           setEmployeeName('Неизвестный соискатель');

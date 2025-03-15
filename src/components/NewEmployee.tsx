@@ -18,8 +18,6 @@ function NewEmployee() {
   const [linkGenerated, setLinkGenerated] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const [formData, setFormData] = useState({
-    firstName: '',
-    lastName: '',
     startDate: new Date().toISOString().split('T')[0],
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -31,27 +29,19 @@ function NewEmployee() {
     setError(null);
     
     if (isSubmitting) return;
-
-    // Validate form data
-    if (!formData.firstName.trim() || !formData.lastName.trim()) {
-      setError('Пожалуйста, заполните все обязательные поля');
-      return;
-    }
     
     try {
       setIsSubmitting(true);
       
       // Create employee in Supabase
       const employee = await createEmployee({
-        first_name: formData.firstName.trim(),
-        last_name: formData.lastName.trim(),
+        first_name: '',
         department: 'Candidates',
         level: 'Junior',
         success: 0,
         trend: 'up',
         improvement: '',
-        status: 'Active',
-        avatar: ''
+        status: 'Active'
       });
       
       console.log('Employee created successfully:', employee);
@@ -73,8 +63,6 @@ function NewEmployee() {
 
       // Store candidate data in session storage
       const candidateData = {
-        firstName: formData.firstName.trim(),
-        lastName: formData.lastName.trim(),
         userId: employee.id,
         startDate: formData.startDate
       };
@@ -154,35 +142,6 @@ function NewEmployee() {
             )}
 
             <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-1">
-                    Имя <span className="text-red-400">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.firstName}
-                    onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                    className="w-full bg-[#1a1a1a] border border-[#3d3d3d] rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-pink-500"
-                    required
-                    disabled={isSubmitting}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-1">
-                    Фамилия <span className="text-red-400">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.lastName}
-                    onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                    className="w-full bg-[#1a1a1a] border border-[#3d3d3d] rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-pink-500"
-                    required
-                    disabled={isSubmitting}
-                  />
-                </div>
-              </div>
-
               <div>
                 <label className="block text-sm font-medium text-gray-400 mb-1">
                   Дата начала тестирования

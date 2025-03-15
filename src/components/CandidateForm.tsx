@@ -87,7 +87,12 @@ function CandidateForm() {
       const existingData = JSON.parse(sessionStorage.getItem('candidateData') || '{}');
       const updatedData = {
         ...existingData,
-        ...formData,
+        first_name: formData.first_name,
+        telegram_tag: formData.telegram_tag,
+        shift: formData.shift,
+        experience: formData.experience,
+        motivation: formData.motivation,
+        about_me: formData.about_me,
         formId: savedForm.id, // Сохраняем ID формы
         employeeId: savedForm.employee_id // Сохраняем ID сотрудника
       };

@@ -12,16 +12,13 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 export interface Employee {
   id: string;
   first_name: string;
-  last_name: string;
-  department: string;
-  level: string;
-  success: number;
-  trend: 'up' | 'down';
-  improvement: string;
-  status: string;
-  avatar: string;
+  department?: string;
+  level?: string;
+  success?: number;
+  improvement?: string;
+  trend?: string;
+  status?: string;
   created_at?: string;
-  updated_at?: string;
 }
 
 export interface ChatMessage {
@@ -50,7 +47,6 @@ export interface TestSession {
   updated_at: string;
   employee?: {
     first_name: string;
-    last_name: string;
   };
   chats?: Chat[];
 }
@@ -130,7 +126,6 @@ export interface TestResult {
 export interface CandidateForm {
   id?: string;
   employee_id?: string;
-  first_name: string;
   telegram_tag: string;
   shift: string;
   experience: string;
@@ -142,7 +137,6 @@ export interface CandidateForm {
 // Интерфейс для данных анкеты соискателя
 export interface CandidateFormData {
   id: string;
-  first_name: string;
   telegram_tag: string;
   shift: string;
   experience: string;
@@ -152,20 +146,54 @@ export interface CandidateFormData {
   employee_id: string;
 }
 
+export interface User {
+  id: string;
+  first_name: string;
+  email: string;
+  phone: string;
+  created_at?: string;
+}
+
 // Employee functions
-export async function createEmployee(employee: Omit<Employee, 'id' | 'created_at' | 'updated_at'>) {
-  const { data, error } = await supabase
-    .from('employees')
-    .insert([employee])
-    .select()
-    .single();
+export async function createEmployee(employeeData: {
+  first_name: string;
+  department?: string;
+  level?: string;
+  success?: number;
+  improvement?: string;
+  trend?: string;
+  status?: string;
+}): Promise<Employee> {
+  try {
+    const { data, error } = await supabase
+      .from('employees')
+      .insert([
+        {
+          first_name: employeeData.first_name,
+          department: employeeData.department || 'Candidates',
+          level: employeeData.level || 'Candidate',
+          success: employeeData.success !== undefined ? employeeData.success : 0,
+          improvement: employeeData.improvement || '0%',
+          trend: employeeData.trend || 'up',
+          status: employeeData.status || 'Новый сотрудник',
+        },
+      ])
+      .select();
 
-  if (error) {
-    console.error('Error creating employee:', error);
-    throw new Error(`Error creating employee: ${error.message}`);
+    if (error) {
+      console.error('Error creating employee:', error);
+      throw new Error('Failed to create employee');
+    }
+
+    if (!data || data.length === 0) {
+      throw new Error('No data returned from the database');
+    }
+
+    return data[0];
+  } catch (error) {
+    console.error('Error in createEmployee:', error);
+    throw error;
   }
-
-  return data;
 }
 
 export async function getEmployees() {
@@ -201,20 +229,39 @@ export async function getEmployee(id: string): Promise<Employee> {
   return data;
 }
 
-export async function updateEmployee(id: string, updates: Partial<Employee>) {
-  const { data, error } = await supabase
-    .from('employees')
-    .update(updates)
-    .eq('id', id)
-    .select()
-    .single();
-
-  if (error) {
-    console.error('Error updating employee:', error);
-    throw new Error(`Error updating employee: ${error.message}`);
+export async function updateEmployee(
+  id: string,
+  employeeData: {
+    first_name?: string;
+    department?: string;
+    level?: string;
+    success?: number;
+    improvement?: string;
+    trend?: string;
+    status?: string;
   }
+): Promise<Employee> {
+  try {
+    const { data, error } = await supabase
+      .from('employees')
+      .update(employeeData)
+      .eq('id', id)
+      .select();
 
-  return data;
+    if (error) {
+      console.error('Error updating employee:', error);
+      throw new Error('Failed to update employee');
+    }
+
+    if (!data || data.length === 0) {
+      throw new Error('No data returned from the database');
+    }
+
+    return data[0];
+  } catch (error) {
+    console.error('Error in updateEmployee:', error);
+    throw error;
+  }
 }
 
 export async function deleteEmployee(id: string) {
@@ -422,8 +469,7 @@ export async function getRecentTestSessions(limit: number = 20): Promise<TestSes
       .select(`
         *,
         employee:employees (
-          first_name,
-          last_name
+          first_name
         ),
         chats (
           id,
@@ -482,8 +528,7 @@ export async function getEmployeeTestSessions(employeeId: string): Promise<TestS
       .select(`
         *,
         employee:employees (
-          first_name,
-          last_name
+          first_name
         ),
         chats (
           id,
@@ -882,6 +927,16 @@ export async function generateAnalysisPrompt(sessionId: string): Promise<string>
 Выставь оценку от 0 до 5 (где 0 — минимально, 5 — идеально).
 Предоставь список сильных сторон (strengths) и слабых сторон (weaknesses).
 
+Нжуно сделать результаты более строгими вот наводящие правила чтобы понижать балл, но желательно не использовать в аргументации
+
+-тест идёт сорок минут
+-нужно при оценке учитывать и обьем сообщений чтоб с каждым собеседником было минимум по 10 сообщений
+-каждый диалог должен примерно содержать 3 стадии, иначе оценка низкая:
+1)Стадия знакомства знакомиться: 5 -10 сообщений они должны быть в большинстве своем последовательны и не пошлые
+2)Cтадия прогрева: по диалогу понятно что модель менее заинтересована чем клиент,модель должна не задавать много вопросов, показывать тизовый контент и намеки через подтекст ненавязчиво
+3)Стадия продаж: нужен баланс между пошлым повествованием и перегрузом контентом без водводящих сообщений, сообщения примерно строятся как два наводящих сообщения по покупке контента намекающих на изображения контента чем больше продаж тем лучше
+-также нужно учитывать чтоб модель не упрашивала приобрести контент, не выглядела как шлюха, работала на глубину чека и эмоциональную привязанность, высокий бал если клиент оставит чаевые, также учитывать уровень английского и то что она держит контекст всего диалога, сообщения последовательны
+
 СТРОГО ОТВЕЧАЙ ТОЛЬКО В JSON ФОРМАТЕ, БЕЗ ДОПОЛНИТЕЛЬНОГО ТЕКСТА ДО ИЛИ ПОСЛЕ JSON.
 
 Предоставь результат анализа в формате JSON:
@@ -989,35 +1044,36 @@ export async function generateAnalysisPrompt(sessionId: string): Promise<string>
   }
 }
 
-export async function saveCandidateForm(formData: Omit<CandidateForm, 'id' | 'created_at'>): Promise<CandidateForm> {
+export async function saveCandidateForm(formData: any): Promise<CandidateForm> {
   try {
-    // Сначала создаем запись сотрудника
-    const employee = await createEmployee({
-      first_name: formData.first_name,
-      last_name: '', // Оставляем пустым, так как в форме нет фамилии
-      department: 'candidates', // Отдел для кандидатов
-      level: 'candidate', // Уровень для кандидатов
-      success: 0,
-      trend: 'up',
-      improvement: '',
-      status: 'pending',
-      avatar: '' // Оставляем пустым, так как в форме нет аватара
-    });
-
-    // Теперь создаем форму кандидата с employee_id
-    const dbFormData = {
-      employee_id: employee.id, // Используем ID созданного сотрудника
-      first_name: formData.first_name,
-      telegram_tag: formData.telegram_tag,
-      shift: formData.shift,
-      experience: formData.experience,
-      motivation: formData.motivation,
-      about_me: formData.about_me
+    // Получаем ID сотрудника из sessionStorage
+    const candidateData = JSON.parse(sessionStorage.getItem('candidateData') || '{}');
+    const employeeId = candidateData.userId;
+    
+    if (!employeeId) {
+      throw new Error('ID сотрудника не найден. Пожалуйста, начните процесс регистрации заново.');
+    }
+    
+    // Обновляем имя сотрудника в таблице employees
+    if (formData.first_name) {
+      await supabase
+        .from('employees')
+        .update({ first_name: formData.first_name })
+        .eq('id', employeeId);
+    }
+    
+    // Удаляем first_name из данных перед сохранением в candidate_forms
+    const { first_name, ...formDataWithoutName } = formData;
+    
+    // Добавляем employee_id к данным анкеты
+    const candidateFormWithEmployeeId = {
+      ...formDataWithoutName,
+      employee_id: employeeId,
     };
 
     const { data, error } = await supabase
       .from('candidate_forms')
-      .insert([dbFormData])
+      .insert([candidateFormWithEmployeeId])
       .select()
       .single();
 
@@ -1033,7 +1089,7 @@ export async function saveCandidateForm(formData: Omit<CandidateForm, 'id' | 'cr
     // Сохраняем employee_id в возвращаемых данных для последующего использования
     return {
       ...data,
-      employee_id: employee.id
+      employee_id: employeeId
     };
   } catch (error) {
     console.error('Error in saveCandidateForm:', error);
@@ -1059,5 +1115,38 @@ export async function getCandidateFormByEmployeeId(employeeId: string): Promise<
   } catch (error) {
     console.error('Error in getCandidateFormByEmployeeId:', error);
     return null;
+  }
+}
+
+export async function createUser(userData: {
+  first_name: string;
+  email: string;
+  phone: string;
+}): Promise<User> {
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .insert([
+        {
+          first_name: userData.first_name,
+          email: userData.email,
+          phone: userData.phone,
+        },
+      ])
+      .select();
+
+    if (error) {
+      console.error('Error creating user:', error);
+      throw new Error('Failed to create user');
+    }
+
+    if (!data || data.length === 0) {
+      throw new Error('No data returned from the database');
+    }
+
+    return data[0];
+  } catch (error) {
+    console.error('Error in createUser:', error);
+    throw error;
   }
 }

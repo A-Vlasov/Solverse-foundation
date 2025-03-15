@@ -391,7 +391,7 @@ function TestResultsAdmin() {
               setTestResults(prev => ({
                 ...prev,
                 candidateName: session.employee ? 
-                  `${session.employee.first_name} ${session.employee.last_name}` : 
+                  `${session.employee.first_name}` : 
                   'Неизвестный соискатель',
                 date: new Date(session.created_at).toLocaleDateString(),
                 duration: session.end_time ? 
@@ -710,12 +710,13 @@ function TestResultsAdmin() {
             // Обновляем информацию о сотруднике и дате тестирования
         // Безопасно извлекаем имя и фамилию сотрудника
         const firstName = latestSession?.employee?.first_name || '';
-        const lastName = latestSession?.employee?.last_name || '';
-        const candidateName = firstName && lastName ? `${firstName} ${lastName}` : 'Неизвестный соискатель';
+        
+        // Формируем имя сотрудника
+        let employeeName = firstName ? firstName : 'Неизвестный сотрудник';
         
         setTestResults(prev => ({
           ...prev,
-          candidateName,
+          candidateName: employeeName,
           date: new Date(latestSession.created_at).toLocaleDateString(),
           duration: latestSession.end_time 
             ? `${Math.round((new Date(latestSession.end_time).getTime() - new Date(latestSession.created_at).getTime()) / 60000)} минут`

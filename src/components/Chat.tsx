@@ -505,7 +505,7 @@ function Chat() {
         
         if (!targetEmployee) {
           console.warn('Employee not found by ID:', candidateId);
-          console.log('Found employees:', employees.map(e => ({ id: e.id, name: `${e.first_name} ${e.last_name}` })));
+          console.log('Found employees:', employees.map(e => ({ id: e.id, name: e.first_name })));
           console.log('Using first employee instead:', employees[0].id);
           // Если не найден, используем первого сотрудника
           const session = await createTestSession(employees[0].id);
@@ -515,7 +515,7 @@ function Chat() {
         } else {
           console.log('Found employee:', { 
             id: targetEmployee.id, 
-            name: `${targetEmployee.first_name} ${targetEmployee.last_name}` 
+            name: targetEmployee.first_name
           });
           // Создаем сессию для найденного сотрудника
           const session = await createTestSession(targetEmployee.id);

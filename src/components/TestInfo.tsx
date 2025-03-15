@@ -3,9 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { ClipboardList, Clock, AlertCircle } from 'lucide-react';
 
 interface CandidateData {
-  firstName: string;
-  lastName: string;
   userId?: string;
+  first_name?: string;
   startDate?: string;
   aboutMe?: string;
   questions?: Record<string, string>;
@@ -20,7 +19,7 @@ function TestInfo() {
     console.log('Loading candidate data in TestInfo:', data);
     
     // Проверяем наличие обязательных полей
-    if (!data.firstName || !data.lastName) {
+    if (!data.userId) {
       console.warn('Missing required fields in TestInfo:', data);
       // Возвращаем пользователя на форму, если данные отсутствуют
       navigate('/candidate');
@@ -32,7 +31,7 @@ function TestInfo() {
 
   const handleStartTest = () => {
     // Проверяем наличие данных перед началом тестирования
-    if (!candidateData || !candidateData.firstName || !candidateData.lastName) {
+    if (!candidateData || !candidateData.userId) {
       console.warn('Missing candidate data before starting test:', candidateData);
       navigate('/candidate');
       return;
@@ -55,7 +54,7 @@ function TestInfo() {
             Информация о тестировании
           </h1>
           <p className="text-gray-400 mt-2">
-            Здравствуйте, {candidateData.firstName} {candidateData.lastName}!
+            Здравствуйте, {candidateData.first_name || 'соискатель'}!
           </p>
         </div>
 

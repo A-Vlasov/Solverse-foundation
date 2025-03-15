@@ -147,7 +147,7 @@ function EmployeeProfile() {
             <div className="space-y-4">
               <div className="p-4 bg-[#1a1a1a]/50 backdrop-blur rounded-lg border border-[#3d3d3d] hover:border-pink-500/50 transition-all duration-300">
                 <p className="text-gray-400 mb-1 text-sm">Имя</p>
-                <p className="font-medium text-white">{candidateForm.first_name}</p>
+                <p className="font-medium text-white">{employee?.first_name || 'Не указано'}</p>
               </div>
               <div className="p-4 bg-[#1a1a1a]/50 backdrop-blur rounded-lg border border-[#3d3d3d] hover:border-pink-500/50 transition-all duration-300">
                 <p className="text-gray-400 mb-1 text-sm">Telegram</p>

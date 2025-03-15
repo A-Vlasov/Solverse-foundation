@@ -73,7 +73,7 @@ function Dashboard() {
         
         // Проверяем наличие данных о соискателях
         sessions.forEach(session => {
-          if (!session.employee || !session.employee.first_name || !session.employee.last_name) {
+          if (!session.employee || !session.employee.first_name) {
             console.warn('Missing employee data for session:', session.id);
           }
         });
@@ -147,15 +147,15 @@ function Dashboard() {
     // Сначала удаляем дубликаты по имени и нормализованному отделу
     .filter((employee, index, self) =>
       index === self.findIndex((e) => 
-        e.first_name === employee.first_name && 
-        e.department.toLowerCase() === employee.department.toLowerCase()
+        (e.first_name || '') === (employee.first_name || '') && 
+        ((e.department || '')?.toLowerCase() === (employee.department || '')?.toLowerCase())
       )
     )
     // Затем применяем фильтры
     .map(employee => ({
       ...employee,
-      department: employee.department.toLowerCase() === 'candidates' ? 'Candidates' : employee.department,
-      level: employee.level.toLowerCase() === 'candidate' ? 'Junior' : employee.level
+      department: employee.department?.toLowerCase() === 'candidates' ? 'Candidates' : employee.department,
+      level: employee.level?.toLowerCase() === 'candidate' ? 'Junior' : employee.level
     }))
     .filter(employee => {
       return (
@@ -298,10 +298,10 @@ function Dashboard() {
               <tbody className="divide-y divide-[#3d3d3d]">
                 {recentTestSessions.map((session) => {
                   const { date, time } = formatDateTime(session.created_at);
-                  // Используем первые две буквы имени сотрудника как инициалы
-                  const initials = session.employee ? 
-                    (session.employee.first_name[0] + session.employee.last_name[0]).toUpperCase() :
-                    '??';
+                  // Используем первую букву имени сотрудника как инициалы
+                  const initials = session.employee && session.employee.first_name && session.employee.first_name[0] ? 
+                    session.employee.first_name[0].toUpperCase() :
+                    '?';
                   
                   return (
                     <tr 
@@ -317,9 +317,8 @@ function Dashboard() {
                           <div>
                             <div className="font-medium">
                               {session.employee ? 
-                                `${session.employee.first_name} ${session.employee.last_name}` :
-                                'Сотрудник не найден'
-                              }
+                                `${session.employee.first_name}` :
+                                'Неизвестный пользователь'}
                             </div>
                             <div className="text-sm text-gray-400">
                               Участник тестирования
@@ -467,10 +466,10 @@ function Dashboard() {
                       >
                         <td className="py-4">
                           <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full bg-pink-500 flex items-center justify-center text-white font-medium">
-                              {employee.first_name[0]}
+                            <div className="w-8 h-8 rounded-full bg-gradient-to-r from-pink-500 to-purple-500 flex items-center justify-center text-xs font-medium text-white">
+                              {employee.first_name && employee.first_name[0] ? employee.first_name[0].toUpperCase() : '?'}
                             </div>
-                            <span className="text-white">{employee.first_name}</span>
+                            <span className="text-white">{employee.first_name || 'Без имени'}</span>
                           </div>
                         </td>
                         <td className="py-4">
