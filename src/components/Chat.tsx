@@ -1202,7 +1202,7 @@ function Chat() {
       id: `user-${Date.now()}`,
       sender: 'You',
       content: messageContent,
-      time: new Date().toLocaleTimeString(),
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       isOwn: true,
       isRead: true,
       ...(imageInfo && { imageUrl: imageInfo.url, price: imageInfo.price })
@@ -1239,7 +1239,7 @@ function Chat() {
       );
 
       const chatHistory = chatHistories[selectedUser];
-      const messagesToSend: { role: 'user' | 'assistant' | 'system', content: string }[] = chatHistory.slice(0, -1).map(msg => ({
+      const messagesToSend: { role: 'user' | 'assistant' | 'system', content: string }[] = chatHistory.map(msg => ({
         role: msg.isOwn ? 'user' : 'assistant',
         content: msg.content
       }));
@@ -1249,12 +1249,11 @@ function Chat() {
         content: messageContent
       });
 
-      if (chatHistory.length === 1) {
-        messagesToSend.unshift({
-          role: 'system',
-          content: userPrompts[selectedUser]
-        });
-      }
+      // Всегда добавляем системный промпт в начало массива
+      messagesToSend.unshift({
+        role: 'system',
+        content: userPrompts[selectedUser]
+      });
 
       const conversationDetails = userConversations[selectedUser];
       const grokResponse = await generateGrokResponse(messagesToSend, conversationDetails);
@@ -1264,7 +1263,7 @@ function Chat() {
           id: `error-${Date.now()}`,
           sender: selectedUser,
           content: `Ошибка: ${grokResponse.error}`,
-          time: new Date().toLocaleTimeString(),
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           isOwn: false,
           isRead: false,
           error: true
@@ -1290,7 +1289,7 @@ function Chat() {
           id: `assistant-${Date.now()}`,
           sender: selectedUser,
           content: grokResponse.response,
-          time: new Date().toLocaleTimeString(),
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           isOwn: false,
           isRead: false
         };
@@ -1326,7 +1325,7 @@ function Chat() {
         id: `error-${Date.now()}`,
         sender: selectedUser,
         content: 'Произошла ошибка при отправке сообщения. Пожалуйста, попробуйте еще раз.',
-        time: new Date().toLocaleTimeString(),
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         isOwn: false,
         isRead: false,
         error: true
