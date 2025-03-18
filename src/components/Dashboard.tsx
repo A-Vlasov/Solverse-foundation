@@ -68,33 +68,61 @@ function Dashboard() {
     const fetchRecentTestSessions = async () => {
       try {
         setLoadingTestSessions(true);
-        const sessions = await getRecentTestSessions(10);
-        console.log('Fetched recent test sessions:', sessions);
+        console.log('🔄 Dashboard: Fetching recent test sessions...');
         
-        // Проверяем наличие данных о соискателях
-        sessions.forEach(session => {
-          if (!session.employee || !session.employee.first_name) {
-            console.warn('Missing employee data for session:', session.id);
+        // Очищаем кэш, чтобы гарантировать получение свежих данных
+        try {
+          localStorage.removeItem('recent_test_sessions');
+        } catch (e) {
+          // Игнорируем ошибки localStorage
+        }
+        
+        const sessions = await getRecentTestSessions(10);
+        console.log('📋 Dashboard: Received test sessions:', sessions.map(s => ({
+          id: s.id,
+          completed: s.completed,
+          end_time: s.end_time,
+          employee: s.employee?.first_name,
+          chats: s.chats?.length
+        })));
+        
+        // Проверяем и исправляем статус completed на основе наличия end_time
+        const correctedSessions = sessions.map(session => {
+          // Если сессия имеет end_time, но не помечена как completed
+          if (session.end_time && !session.completed) {
+            console.warn('⚠️ Dashboard: Session has end_time but not marked as completed:', session.id);
+            return { ...session, completed: true };
           }
+          return session;
         });
         
-        const displaySessions: SessionDisplay[] = sessions.map(session => ({
+        // Проверяем наличие данных о сотрудниках
+        const missingEmployeeData = correctedSessions.filter(session => !session.employee || !session.employee.first_name);
+        if (missingEmployeeData.length > 0) {
+          console.warn('⚠️ Dashboard: Missing employee data for sessions:', 
+            missingEmployeeData.map(s => s.id));
+        }
+        
+        const displaySessions: SessionDisplay[] = correctedSessions.map(session => ({
           ...session,
           character_name: getCharacterNameBySessionNumber(session.id),
           messages_count: getMessagesCount(session)
         }));
         
+        console.log('✅ Dashboard: Processed sessions for display:', displaySessions.length);
         setRecentTestSessions(displaySessions);
       } catch (error) {
-        console.error('Error fetching recent test sessions:', error);
+        console.error('❌ Dashboard: Error fetching test sessions:', error);
       } finally {
         setLoadingTestSessions(false);
       }
     };
     
+    // Немедленно загружаем данные при монтировании
     fetchRecentTestSessions();
     
-    const intervalId = setInterval(fetchRecentTestSessions, 30000);
+    // Устанавливаем интервал обновления каждые 10 секунд вместо 30 секунд
+    const intervalId = setInterval(fetchRecentTestSessions, 10000);
     return () => clearInterval(intervalId);
   }, []);
 
@@ -107,8 +135,8 @@ function Dashboard() {
     switch(charNum) {
       case 0: return 'Marcus';
       case 1: return 'Shrek';
-      case 2: return 'Olivia';
-      case 3: return 'Ava';
+      case 2: return 'Oliver';
+      case 3: return 'Alex';
       default: return 'Unknown';
     }
   };

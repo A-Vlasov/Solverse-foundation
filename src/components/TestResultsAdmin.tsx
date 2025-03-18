@@ -14,7 +14,6 @@ import {
   Printer,
   CheckCircle,
   XCircle,
-  ChevronRight,
   Flame,
   Users,
   ShoppingCart,
@@ -94,6 +93,22 @@ interface TestResultState {
   dialogues: Dialogue[];
 }
 
+// Сделаем функцию очистки тегов более универсальной и эффективной
+const cleanMessageTags = (text: string): string => {
+  // Удаляем все теги в формате [тег]
+  return text
+    .replace(/\[\s*Bought\s*\]/gi, '')
+    .replace(/\[\s*Not\s*Bought\s*\]/gi, '')
+    .trim()
+    .replace(/\s+/g, ' '); // Убираем лишние пробелы
+};
+
+// Добавим интерфейс для диалогов с информацией о покупке
+interface DialogueMessageWithPurchaseInfo extends DialogueMessage {
+  bought?: boolean;
+  price?: string;
+}
+
 // Добавляем функцию для диагностики
 const debug = (sessionId: string, chats: Chat[], testResult: TestResult | null) => {
   console.log('=== ДИАГНОСТИКА ДАННЫХ СЕССИИ ===');
@@ -117,6 +132,27 @@ const debug = (sessionId: string, chats: Chat[], testResult: TestResult | null) 
   console.log('2. Чаты созданы, но сообщения отсутствуют (messagesCounts должны быть > 0)');
   console.log('3. Сессия и чаты существуют, но анализ отсутствует (Test Result отсутствует)');
   console.log('=== КОНЕЦ ДИАГНОСТИКИ ===');
+};
+
+// Добавляем простую функцию для очистки сообщений от тегов прямо перед возвратом компонента
+const cleanContent = (text: string): string => {
+  return text
+    .replace(/\[\s*Bought\s*\]/gi, '')
+    .replace(/\[\s*Not\s*Bought\s*\]/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
+// Добавляем функцию определения статуса покупки фотографии прямо перед возвратом компонента
+const checkPhotoPurchaseStatus = (dialogueMessages: DialogueMessage[], photoMsgIndex: number): boolean => {
+  // Проверяем все сообщения после фотографии
+  for (let i = photoMsgIndex + 1; i < dialogueMessages.length; i++) {
+    // Ищем только в ответах бота
+    if (!dialogueMessages[i].isOwn && dialogueMessages[i].content.includes('[Bought]')) {
+      return true;
+    }
+  }
+  return false;
 };
 
 function TestResultsAdmin() {
@@ -248,7 +284,7 @@ function TestResultsAdmin() {
   };
 
   // Рассчитываем среднюю оценку по всем метрикам
-  const calculateOverallScore = (metrics: any) => {
+  const calculateOverallScore = (metrics: Record<string, any>) => {
     if (!metrics) return 0;
     
     const scores = [
@@ -341,7 +377,7 @@ function TestResultsAdmin() {
               // Преобразуем чаты в формат диалогов для отображения
               if (chatHistory && chatHistory.length > 0) {
                 // Массив имен персонажей
-                const characterNames = ['Marcus', 'Shrek', 'Olivia', 'Ava'];
+                const characterNames = ['Marcus', 'Shrek', 'Oliver', 'Alex'];
                 
                 const newDialogues: Dialogue[] = chatHistory.map((chat, index) => ({
                   id: chat.id,
@@ -514,151 +550,113 @@ function TestResultsAdmin() {
     loadData();
   }, [sessionId, location.state?.employeeId, location.pathname]);
 
-  // Функция для загрузки истории чатов по ID сотрудника
+  // Обновляем функцию loadChatHistory для обработки сообщений
   const loadChatHistory = async (employeeId: string) => {
     try {
       console.log('Loading employee test sessions for:', employeeId);
-          // Получаем все тестовые сессии сотрудника
-          const employeeSessions = await getEmployeeTestSessions(employeeId);
+      const employeeSessions = await getEmployeeTestSessions(employeeId);
       console.log('Employee sessions found:', employeeSessions.length);
           
-          if (employeeSessions.length > 0) {
-            // Берем последнюю сессию
-            const latestSession = employeeSessions[0];
+      if (employeeSessions.length > 0) {
+        const latestSession = employeeSessions[0];
         console.log('Using latest session:', latestSession.id);
             
-            // Загружаем историю чатов для этой сессии
-            const chatHistory = await getChatHistory(latestSession.id);
+        const chatHistory = await getChatHistory(latestSession.id);
         console.log('Chats loaded for session:', chatHistory.length);
-            setChats(chatHistory);
+        setChats(chatHistory);
 
-        // Загружаем результаты анализа для сессии
-        const result = await getTestResultForSession(latestSession.id);
-        console.log('Test results found:', result ? 'Yes' : 'No');
-        if (result && result.analysis_result) {
-          setTestResult(result);
-          const analysis = result.analysis_result.dialog_analysis;
+        // Массив имен персонажей
+        const characterNames = ['Marcus', 'Shrek', 'Oliver', 'Alex'];
+
+        // Преобразуем чаты в диалоги с обработкой тегов покупки
+        const newDialogues = chatHistory.map((chat, index) => {
+          // Создаем массив для обработанных сообщений
+          const processedMessages: DialogueMessageWithPurchaseInfo[] = [];
           
-          // Рассчитываем общую оценку
-          const overallScore = calculateOverallScore(analysis.metrics);
-          
-          // Обновляем параметры оценки
-          setTestResults(prev => ({
-            ...prev,
-            overallScore: parseFloat(overallScore.toFixed(1)),
-            parameters: [
-              {
-                name: 'Вовлеченность',
-                score: analysis.metrics.engagement.score,
-                comment: analysis.metrics.engagement.verdict,
-                icon: <MessageCircle className="w-6 h-6" />,
-                color: 'blue'
-              },
-              {
-                name: 'Обаяние и тон',
-                score: analysis.metrics.charm_and_tone.score,
-                comment: analysis.metrics.charm_and_tone.verdict,
-                icon: <Smile className="w-6 h-6" />,
-                color: 'purple'
-              },
-              {
-                name: 'Креативность',
-                score: analysis.metrics.creativity.score,
-                comment: analysis.metrics.creativity.verdict,
-                icon: <Lightbulb className="w-6 h-6" />,
-                color: 'yellow'
-              },
-              {
-                name: 'Адаптивность',
-                score: analysis.metrics.adaptability.score,
-                comment: analysis.metrics.adaptability.verdict,
-                icon: <RefreshCw className="w-6 h-6" />,
-                color: 'green'
-              },
-              {
-                name: 'Умение продавать себя',
-                score: analysis.metrics.self_promotion.score,
-                comment: analysis.metrics.self_promotion.verdict,
-                icon: <DollarSign className="w-6 h-6" />,
-                color: 'pink'
-              }
-            ],
-            // Обновляем данные о ценовой политике, если они доступны
-            ...(analysis.metrics.pricing_policy ? {
-              pricingEvaluation: {
-                score: analysis.metrics.pricing_policy.score,
-                level: analysis.metrics.pricing_policy.score >= 4 ? 'Высокая' : 
-                       analysis.metrics.pricing_policy.score >= 3 ? 'Средняя' : 'Низкая',
-                strengths: analysis.metrics.pricing_policy.strengths || [],
-                weaknesses: analysis.metrics.pricing_policy.improvements || [],
-                details: analysis.metrics.pricing_policy.verdict
-              }
-            } : {}),
+          // Обрабатываем каждое сообщение
+          for (let i = 0; i < chat.messages.length; i++) {
+            const msg = chat.messages[i];
             
-            // Обновляем данные о трех этапах продаж, если они доступны
-            ...(analysis.metrics.sales_stages ? {
-              salesPerformance: {
-                introduction: {
-                  score: analysis.metrics.sales_stages.introduction.score,
-                  conversionRate: Math.round(analysis.metrics.sales_stages.introduction.score * 20), // Преобразуем оценку 0-5 в процент 0-100
-                  strengths: analysis.metrics.sales_stages.introduction.strengths || [],
-                  weaknesses: analysis.metrics.sales_stages.introduction.weaknesses || []
-                },
-                warmup: {
-                  score: analysis.metrics.sales_stages.warmup.score,
-                  conversionRate: Math.round(analysis.metrics.sales_stages.warmup.score * 20),
-                  strengths: analysis.metrics.sales_stages.warmup.strengths || [],
-                  weaknesses: analysis.metrics.sales_stages.warmup.weaknesses || []
-                },
-                sales: {
-                  score: analysis.metrics.sales_stages.closing.score,
-                  conversionRate: Math.round(analysis.metrics.sales_stages.closing.score * 20),
-                  strengths: analysis.metrics.sales_stages.closing.strengths || [],
-                  weaknesses: analysis.metrics.sales_stages.closing.weaknesses || []
+            // Создаем обработанное сообщение
+            const processedMsg: DialogueMessageWithPurchaseInfo = {
+              ...msg,
+              id: `msg-${chat.id}-${i}`,
+              time: new Date(msg.time || latestSession.created_at).toLocaleTimeString('ru-RU', {
+                hour: '2-digit',
+                minute: '2-digit'
+              }),
+              role: msg.isOwn ? 'user' : 'assistant',
+              content: msg.content // Содержимое пока оставляем без изменений
+            };
+            
+            // Проверяем сообщения от бота
+            if (!msg.isOwn) {
+              // Проверяем наличие тега [Bought]
+              const hasBoughtTag = msg.content.includes('[Bought]');
+              console.log('Message from bot:', msg.content, 'Has bought tag:', hasBoughtTag);
+              
+              if (hasBoughtTag) {
+                // Ищем последнее фото от пользователя
+                for (let j = i - 1; j >= 0; j--) {
+                  if (chat.messages[j].isOwn && chat.messages[j].content.includes('[Фото')) {
+                    console.log('Found photo message:', chat.messages[j].content);
+                    
+                    // Ищем информацию о цене
+                    const priceMatch = chat.messages[j].content.match(/\[Цена: (.*?)\]/);
+                    const price = priceMatch ? priceMatch[1] : null;
+                    
+                    if (price && price !== 'FREE') {
+                      // Находим сообщение с фото в обработанных сообщениях
+                      const photoIndex = processedMessages.findIndex(m => m.id === `msg-${chat.id}-${j}`);
+                      
+                      if (photoIndex !== -1) {
+                        console.log('Updating photo message with bought status');
+                        processedMessages[photoIndex].bought = true;
+                        processedMessages[photoIndex].price = price;
+                      }
+                    }
+                    break;
+                  }
                 }
               }
-            } : {}),
+              
+              // Очищаем сообщение от тегов
+              processedMsg.content = cleanMessageTags(msg.content);
+            } else {
+              // Проверяем сообщения пользователя на наличие цены
+              const priceMatch = msg.content.match(/\[Цена: (.*?)\]/);
+              if (priceMatch && priceMatch[1] !== 'FREE') {
+                processedMsg.price = priceMatch[1];
+              }
+            }
             
-            recommendations: analysis.result_summary ? [analysis.result_summary] : ['Нет рекомендаций']
-          }));
-        }
+            // Добавляем обработанное сообщение в массив
+            processedMessages.push(processedMsg);
+          }
+          
+          // Создаем объект диалога с обработанными сообщениями
+          return {
+            id: chat.id,
+            title: `Диалог с ${characterNames[chat.chat_number - 1] || 'Unknown'}`,
+            date: new Date(chat.created_at).toLocaleDateString(),
+            duration: '15 минут',
+            score: 85,
+            messages: processedMessages
+          };
+        });
 
-            // Массив имен персонажей
-            const characterNames = ['Marcus', 'Shrek', 'Olivia', 'Ava'];
+        // Сортируем диалоги по имени персонажа
+        newDialogues.sort((a, b) => {
+          const aNumber = characterNames.indexOf(a.title.split(' с ')[1]);
+          const bNumber = characterNames.indexOf(b.title.split(' с ')[1]);
+          return aNumber - bNumber;
+        });
 
-            // Преобразуем чаты в формат диалогов для отображения
-            const newDialogues = chatHistory.map((chat, index) => ({
-              id: chat.id,
-              title: `Диалог с ${characterNames[chat.chat_number - 1] || 'Unknown'}`,
-              date: new Date(chat.created_at).toLocaleDateString(),
-              duration: '15 минут',
-              score: 85,
-              messages: chat.messages.map((msg, msgIndex) => ({
-                ...msg,
-                id: `msg-${msgIndex}`,
-                time: new Date(latestSession.created_at).toLocaleTimeString('ru-RU', {
-                  hour: '2-digit',
-                  minute: '2-digit'
-                }),
-                role: msg.isOwn ? 'user' : 'assistant'
-              }))
-            }));
-
-            // Сортируем диалоги по номеру чата
-            newDialogues.sort((a, b) => {
-              const aNumber = characterNames.indexOf(a.title.split(' с ')[1]);
-              const bNumber = characterNames.indexOf(b.title.split(' с ')[1]);
-              return aNumber - bNumber;
-            });
-
-            setDialogues(newDialogues);
-            
-            // Обновляем информацию о сотруднике и дате тестирования
-        // Безопасно извлекаем имя и фамилию сотрудника
-        const firstName = latestSession?.employee?.first_name || '';
+        setDialogues(newDialogues);
         
-        // Формируем имя сотрудника
-        let employeeName = firstName ? firstName : 'Неизвестный сотрудник';
+        // Обновляем информацию о кандидате
+        const firstName = latestSession?.employee?.first_name || '';
+        const employeeName = firstName ? firstName : 'Неизвестный сотрудник';
         
         setTestResults(prev => ({
           ...prev,
@@ -668,12 +666,12 @@ function TestResultsAdmin() {
             ? `${Math.round((new Date(latestSession.end_time).getTime() - new Date(latestSession.created_at).getTime()) / 60000)} минут`
             : 'В процессе'
         }));
-          } else {
-            console.log('No test sessions found for employee');
-        }
-      } catch (err) {
-        console.error('Error loading chat history:', err);
-    setError('Ошибка при загрузке истории чатов');
+      } else {
+        console.log('No test sessions found for employee');
+      }
+    } catch (err) {
+      console.error('Error loading chat history:', err);
+      setError('Ошибка при загрузке истории чатов');
     }
   };
 
@@ -1000,7 +998,7 @@ function TestResultsAdmin() {
                                 </li>
                               ))}
                             </ul>
-                         </div>
+                          </div>
                         )}
                       </div>
                     </div>
@@ -1161,46 +1159,101 @@ function TestResultsAdmin() {
                           
                           <div className="space-y-4">
                             {selectedDialogue && dialogues.find(d => d.id === selectedDialogue)?.messages?.length > 0 ? (
-                              dialogues.find(d => d.id === selectedDialogue)?.messages.map((message: DialogueMessage) => {
-                                const imageMatch = message.content.match(/\[Фото (\d+)\] \[(.*?)\]/);
-                                return (
-                                  <div
-                                    key={message.id}
-                                    className={`flex ${message.isOwn ? 'justify-end' : 'justify-start'}`}
-                                  >
-                                    <div
-                                      className={`max-w-[80%] p-3 rounded-lg ${
-                                        message.isOwn
-                                          ? 'bg-purple-900 text-white rounded-tr-none' 
-                                          : 'bg-[#2d2d2d] text-gray-200 rounded-tl-none'
-                                      }`}
-                                    >
-                                      <div className="text-xs text-gray-400 mb-1 flex justify-between">
-                                        <span>{message.isOwn ? 'Соискатель' : 'AI-клиент'}</span>
-                                        <span>{message.time}</span>
-                                      </div>
-                                      {imageMatch ? (
-                                        <div className="mt-1 rounded-md overflow-hidden">
-                                          <img 
-                                            src={`/foto/${imageMatch[1]}.jpg`}
-                                            alt="Отправленное изображение" 
-                                            className="max-w-[200px] h-auto rounded-md border border-[#3d3d3d]"
-                                          />
-                                        </div>
-                                      ) : (
-                                        <p>{message.content}</p>
-                                      )}
-                                    </div>
-                                  </div>
+                              (() => {
+                                // Получаем объект диалога, чтобы не выполнять поиск многократно
+                                const currentDialogue = dialogues.find(d => d.id === selectedDialogue);
+                                if (!currentDialogue) return null;
+                                
+                                // Добавляем отладочную информацию в консоль
+                                console.log("Отображаем диалог:", 
+                                  currentDialogue.messages.map(m => ({
+                                    isOwn: m.isOwn,
+                                    content: m.content,
+                                    hasBoughtTag: !m.isOwn && m.content.includes('[Bought]'),
+                                    hasNotBoughtTag: !m.isOwn && m.content.includes('[Not Bought]')
+                                  }))
                                 );
-                              })
+                                
+                                return currentDialogue.messages.map((message, index) => {
+                                  // ВАЖНО: Всегда очищаем текст сообщения от тегов перед отображением
+                                  // Эта строка критична для устранения тегов из интерфейса
+                                  const displayContent = cleanMessageTags(message.content);
+                                  
+                                  // Отладочная информация
+                                  console.log(`Очистка сообщения #${index}`, {
+                                    original: message.content,
+                                    cleaned: displayContent,
+                                    hasTags: message.content.includes('[Bought]') || message.content.includes('[Not Bought]')
+                                  });
+                                  
+                                  // Проверяем, содержит ли сообщение фото
+                                  const imageMatch = displayContent.match(/\[Фото (\d+)\] \[(.*?)\]/);
+                                  
+                                  // Информация о цене и статусе покупки
+                                  const priceMatch = message.content.match(/\[Цена: (.*?)\]/);
+                                  const price = priceMatch ? priceMatch[1] : null;
+                                  
+                                  // Проверяем, есть ли сообщение с тегом [Bought] после фото
+                                  let isPaid = false;
+                                  if (message.isOwn && imageMatch && price && price !== 'FREE') {
+                                    // Проверяем все следующие сообщения от бота
+                                    for (let i = index + 1; i < currentDialogue.messages.length; i++) {
+                                      const nextMsg = currentDialogue.messages[i];
+                                      if (!nextMsg.isOwn && nextMsg.content.includes('[Bought]')) {
+                                        isPaid = true;
+                                        break;
+                                      }
+                                    }
+                                  }
+                                  
+                                  return (
+                                    <div
+                                      key={message.id}
+                                      className={`flex ${message.isOwn ? 'justify-end' : 'justify-start'}`}
+                                    >
+                                      <div
+                                        className={`max-w-[80%] p-3 rounded-lg ${
+                                          message.isOwn
+                                            ? 'bg-purple-900 text-white rounded-tr-none' 
+                                            : 'bg-[#2d2d2d] text-gray-200 rounded-tl-none'
+                                        }`}
+                                      >
+                                        <div className="text-xs text-gray-400 mb-1 flex justify-between">
+                                          <span>{message.isOwn ? 'Соискатель' : 'AI-клиент'}</span>
+                                          <span>{message.time}</span>
+                                        </div>
+                                        {imageMatch ? (
+                                          <div className="mt-1 rounded-md overflow-hidden">
+                                            <img 
+                                              src={`/foto/${imageMatch[1]}.jpg`}
+                                              alt="Отправленное изображение" 
+                                              className="max-w-[200px] h-auto rounded-md border border-[#3d3d3d]"
+                                            />
+                                            {price && price !== 'FREE' && (
+                                              <div className="flex items-center justify-end gap-2 mt-1">
+                                                <span className="text-xs text-white font-bold flex items-center gap-1">
+                                                  {isPaid ? 'purchased' : 'pending'}
+                                                  {isPaid ? (
+                                                    <Check className="w-3 h-3 text-green-500" />
+                                                  ) : (
+                                                    <Check className="w-3 h-3 text-gray-400" />
+                                                  )}
+                                                </span>
+                                              </div>
+                                            )}
+                                          </div>
+                                        ) : (
+                                          <p>{displayContent}</p>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                });
+                              })()
                             ) : (
                               <div className="text-center py-8 text-gray-400">
                                 <AlertCircle className="w-10 h-10 mx-auto mb-2 text-yellow-500" />
                                 <p>В этом диалоге пока нет сообщений.</p>
-                                <p className="text-sm mt-2">
-                                  Возможно, сессия ещё не начата или была прервана.
-                                </p>
                               </div>
                             )}
                           </div>

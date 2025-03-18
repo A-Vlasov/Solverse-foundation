@@ -126,7 +126,7 @@ export const generateGrokResponse = async (
   let messageToSend = lastUserMessage.content;
   
   if (systemMessage && !conversationDetails) {
-    messageToSend = `${systemMessage.content}\n\nСообщение пользователя: ${messageToSend}`;
+    messageToSend = `${systemMessage.content}\n\nGirls message: ${messageToSend}`;
   }
 
   if (conversationDetails?.conversationId && conversationDetails?.parentResponseId) {

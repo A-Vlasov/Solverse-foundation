@@ -432,7 +432,36 @@ export async function completeTestSession(
   sessionId: string
 ): Promise<TestSession> {
   try {
-    console.log('Completing test session:', { sessionId });
+    console.log('🔄 Completing test session:', { sessionId });
+    
+    // Проверим существование сессии перед обновлением
+    const { data: existingSession, error: checkError } = await supabase
+      .from('test_sessions')
+      .select('*')
+      .eq('id', sessionId)
+      .single();
+      
+    if (checkError) {
+      console.error('❌ Error checking session existence:', checkError);
+      throw new Error(`Failed to find session: ${checkError.message}`);
+    }
+    
+    if (!existingSession) {
+      console.error('❌ Session not found:', sessionId);
+      throw new Error('Session not found');
+    }
+    
+    console.log('✓ Found session to complete:', { 
+      id: existingSession.id, 
+      completed: existingSession.completed,
+      employee_id: existingSession.employee_id
+    });
+    
+    // Если сессия уже завершена, просто возвращаем её
+    if (existingSession.completed) {
+      console.log('ℹ️ Session already completed:', existingSession);
+      return existingSession;
+    }
     
     const { data, error } = await supabase
       .from('test_sessions')
@@ -446,24 +475,61 @@ export async function completeTestSession(
       .single();
 
     if (error) {
-      console.error('Error completing test session:', error);
+      console.error('❌ Error completing test session:', error);
       throw error;
     }
 
     if (!data) {
+      console.error('❌ No data returned from test session completion');
       throw new Error('No data returned from test session completion');
     }
 
-    console.log('Test session completed successfully:', data);
+    console.log('✅ Test session completed successfully:', data);
+    
+    // Обновление кэша в localStorage для немедленного отражения изменений
+    try {
+      const cacheKey = `test_session_${sessionId}`;
+      localStorage.setItem(cacheKey, JSON.stringify({
+        ...data,
+        cached_at: new Date().toISOString()
+      }));
+      console.log('✅ Session cache updated in localStorage');
+    } catch (cacheError) {
+      console.warn('⚠️ Failed to update local cache:', cacheError);
+      // Игнорируем ошибку кэширования, это некритично
+    }
+    
     return data;
   } catch (error) {
-    console.error('Error in completeTestSession:', error);
+    console.error('❌ Error in completeTestSession:', error);
     throw error;
   }
 }
 
 export async function getRecentTestSessions(limit: number = 20): Promise<TestSession[]> {
   try {
+    console.log('🔍 Fetching recent test sessions, limit:', limit);
+    
+    // Сначала проверим кэш в localStorage
+    try {
+      const cacheKey = 'recent_test_sessions';
+      const cachedData = localStorage.getItem(cacheKey);
+      
+      if (cachedData) {
+        const { sessions, timestamp } = JSON.parse(cachedData);
+        const cacheAge = Date.now() - new Date(timestamp).getTime();
+        
+        // Если кэш не старше 5 секунд (5000 мс), используем его
+        if (cacheAge < 5000 && Array.isArray(sessions) && sessions.length > 0) {
+          console.log('📋 Using cached test sessions, age:', Math.round(cacheAge / 1000), 'seconds');
+          return sessions;
+        }
+      }
+    } catch (cacheError) {
+      console.warn('⚠️ Cache error:', cacheError);
+      // Продолжаем без использования кэша
+    }
+    
     const { data, error } = await supabase
       .from('test_sessions')
       .select(`
@@ -481,42 +547,85 @@ export async function getRecentTestSessions(limit: number = 20): Promise<TestSes
       .limit(limit);
 
     if (error) {
-      console.error('Error fetching recent test sessions:', error);
+      console.error('❌ Error fetching recent test sessions:', error);
       throw error;
     }
 
-    console.log('Raw test sessions:', data?.map(s => ({ id: s.id, employee_id: s.employee_id, completed: s.completed })));
+    // Проверяем наличие данных
+    if (!data || data.length === 0) {
+      console.warn('⚠️ No test sessions found');
+      return [];
+    }
+
+    console.log('📊 Raw test sessions:', data.map(s => ({ 
+      id: s.id, 
+      employee_id: s.employee_id, 
+      completed: s.completed,
+      end_time: s.end_time
+    })));
     
-    // Группируем сессии по employee_id (это наиболее надежный способ определить уникальные тесты)
+    // Проверяем каждую сессию на корректность данных
+    const validSessions = data.filter(session => {
+      if (!session.id || !session.employee_id) {
+        console.warn('⚠️ Invalid session data:', session);
+        return false;
+      }
+      return true;
+    });
+    
+    // Группируем сессии по employee_id - для каждого сотрудника берем самую последнюю сессию
     const latestSessionByEmployee: { [key: string]: TestSession } = {};
     
-    data?.forEach(session => {
+    validSessions.forEach(session => {
       const employeeId = session.employee_id;
       
-      // Если у нас уже есть сессия для этого сотрудника
+      // Проверяем, правильно ли установлен флаг completed
+      // Если есть end_time, но completed = false, корректируем это
+      if (session.end_time && !session.completed) {
+        console.warn('⚠️ Session has end_time but completed=false, fixing:', session.id);
+        session.completed = true;
+      }
+      
+      // Если у нас уже есть сессия для этого сотрудника, берем более новую
       if (latestSessionByEmployee[employeeId]) {
         const existingDate = new Date(latestSessionByEmployee[employeeId].created_at).getTime();
         const currentDate = new Date(session.created_at).getTime();
         
-        // Обновляем только если текущая сессия новее
         if (currentDate > existingDate) {
           latestSessionByEmployee[employeeId] = session;
         }
       } else {
-        // Если это первая сессия для данного сотрудника
         latestSessionByEmployee[employeeId] = session;
       }
     });
     
-    // Преобразуем объект обратно в массив и сортируем по времени создания
+    // Преобразуем объект обратно в массив и сортируем по времени создания (от новых к старым)
     const uniqueSessions = Object.values(latestSessionByEmployee)
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     
-    console.log('Filtered test sessions:', uniqueSessions.map(s => ({ id: s.id, employee_id: s.employee_id, completed: s.completed })));
+    console.log('📋 Filtered sessions:', uniqueSessions.map(s => ({ 
+      id: s.id, 
+      employee_id: s.employee_id, 
+      completed: s.completed,
+      messages_count: s.chats?.reduce((total, chat) => total + (chat.messages?.length || 0), 0) || 0
+    })));
+    
+    // Кэшируем результат в localStorage
+    try {
+      const cacheKey = 'recent_test_sessions';
+      localStorage.setItem(cacheKey, JSON.stringify({
+        sessions: uniqueSessions,
+        timestamp: new Date().toISOString()
+      }));
+      console.log('✅ Sessions cached in localStorage');
+    } catch (cacheError) {
+      console.warn('⚠️ Failed to cache sessions:', cacheError);
+      // Игнорируем ошибку кэширования
+    }
     
     return uniqueSessions;
   } catch (error) {
-    console.error('Error in getRecentTestSessions:', error);
+    console.error('❌ Error in getRecentTestSessions:', error);
     throw error;
   }
 }
@@ -1011,10 +1120,10 @@ export async function generateAnalysisPrompt(sessionId: string): Promise<string>
           characterType = 'Капризный клиент (Shrek)';
           break;
         case 3:
-          characterType = 'Экономный клиент, торгующийся о цене (Olivia)';
+          characterType = 'Экономный клиент, торгующийся о цене (Oliver)';
           break;
         case 4:
-          characterType = 'Провокационный клиент, проверяющий границы (Ava)';
+          characterType = 'Провокационный клиент, проверяющий границы (Alex)';
           break;
         default:
           characterType = `Клиент ${chatNumber}`;

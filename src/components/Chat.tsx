@@ -39,6 +39,7 @@ interface Message {
   errorDetails?: string;
   imageUrl?: string;
   price?: string; // Добавляем поле для цены
+  bought?: boolean; // Добавляем поле для статуса покупки фото
 }
 
 interface ChatHistory {
@@ -263,7 +264,7 @@ function generateUUID() {
 function Chat() {
   const [message, setMessage] = useState('');
   const [selectedUser, setSelectedUser] = useState('Marcus');
-  const [timeRemaining, setTimeRemaining] = useState(300);
+  const [timeRemaining, setTimeRemaining] = useState(1200);
   const [showCongratulations, setShowCongratulations] = useState(false);
   const [calculatingResults, setCalculatingResults] = useState(false);
   const [isSessionComplete, setIsSessionComplete] = useState(false);
@@ -281,21 +282,21 @@ function Chat() {
   const [loadingStates, setLoadingStates] = useState<LoadingStates>({
     Marcus: false,
     Shrek: false,
-    Olivia: false,
-    Ava: false
+    Oliver: false,
+    Alex: false
   });
   const [userStatus, setUserStatus] = useState<UserStatus>({
     Marcus: { isTyping: false, unreadCount: 0, lastMessageId: null },
     Shrek: { isTyping: false, unreadCount: 0, lastMessageId: null },
-    Olivia: { isTyping: false, unreadCount: 0, lastMessageId: null },
-    Ava: { isTyping: false, unreadCount: 0, lastMessageId: null }
+    Oliver: { isTyping: false, unreadCount: 0, lastMessageId: null },
+    Alex: { isTyping: false, unreadCount: 0, lastMessageId: null }
   });
   const [retryingMessage, setRetryingMessage] = useState<Message | null>(null);
   const [chatHistories, setChatHistories] = useState<ChatHistory>({
     Marcus: [],
     Shrek: [],
-    Olivia: [],
-    Ava: [],
+    Oliver: [],
+    Alex: [],
   });
 
   // Add new state for Grok conversations
@@ -307,8 +308,8 @@ function Chat() {
   const users = [
     { name: 'Marcus', status: 'Online', lastMessage: 'Страстный клиент' },
     { name: 'Shrek', status: 'Online', lastMessage: 'Капризный клиент' },
-    { name: 'Olivia', status: 'Away', lastMessage: 'Торгуется о цене' },
-    { name: 'Ava', status: 'Online', lastMessage: 'Проверяет границы' },
+    { name: 'Oliver', status: 'Away', lastMessage: 'Торгуется о цене' },
+    { name: 'Alex', status: 'Online', lastMessage: 'Проверяет границы' },
   ];
 
   const navigate = useNavigate();
@@ -572,24 +573,48 @@ function Chat() {
       if (testSessionId) {
         const completeSession = async () => {
           try {
-            // Подсчитываем общее количество сообщений
-            const totalMessages = Object.values(chatHistories).reduce(
-              (total, messages) => total + messages.length, 
-              0
-            );
+            console.log('⏰ Time expired, completing test session:', testSessionId);
             
-            const testSessionId = sessionStorage.getItem('currentTestSessionId');
-            if (!testSessionId) {
-              console.error('No test session ID found');
-              return;
+            // Принудительно очищаем кэш сессий перед завершением
+            try {
+              localStorage.removeItem('recent_test_sessions');
+              localStorage.removeItem(`test_session_${testSessionId}`);
+            } catch (e) {
+              // Игнорируем ошибки localStorage
             }
-            await completeTestSession(testSessionId);
-            console.log('Test session completed on unmount');
+            
+            // Завершаем сессию в базе данных
+            const result = await completeTestSession(testSessionId);
+            console.log('✅ Test session completed on time expiration:', result);
+            
+            // Задержка для обеспечения синхронизации данных
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            // Запускаем анализ диалогов и сохранение результатов только если это первое завершение
+            if (!isSessionComplete) {
+              console.log('📊 Starting analysis for session:', testSessionId);
+              await analyzeDialogsAndSaveResults(testSessionId);
+            } else {
+              console.log('ℹ️ Session already analyzed, skipping analysis');
+            }
+            
+            // Оповещаем пользователя об успешном завершении
+            setCalculatingResults(false);
+            console.log('✅ Session completion process finished successfully');
           } catch (error) {
-            console.error('Error completing test session:', error);
+            console.error('❌ Error completing test session:', error);
+            
+            // Повторяем попытку через 3 секунды в случае ошибки
+            console.log('⚠️ Retrying session completion in 3 seconds...');
+            setTimeout(() => {
+              completeSession();
+            }, 3000);
+            
+            setCalculatingResults(false);
           }
         };
         
+        // Запускаем процесс завершения сессии
         completeSession();
       }
     };
@@ -630,6 +655,7 @@ function Chat() {
           // Показываем окно поздравления и запускаем расчет результатов
           setShowCongratulations(true);
           setCalculatingResults(true);
+          setIsSessionComplete(true);
           
           // Завершаем тестовую сессию
           if (testSessionId) {
@@ -638,9 +664,10 @@ function Chat() {
                 await completeTestSession(testSessionId);
                 console.log('Test session completed on time expiration');
                 
-                // Запускаем анализ диалогов и сохранение результатов
+                // Запускаем анализ диалогов и сохранение результатов только если это первое завершение
+                if (!isSessionComplete) {
                 await analyzeDialogsAndSaveResults(testSessionId);
-                
+                }
               } catch (error) {
                 console.error('Error completing test session:', error);
                 setCalculatingResults(false);
@@ -657,7 +684,7 @@ function Chat() {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [navigate, testSessionId, userStatus]);
+  }, [navigate, testSessionId, userStatus, isSessionComplete]);
 
   // Обновляем сессию после добавления каждого сообщения
   useEffect(() => {
@@ -689,13 +716,18 @@ function Chat() {
         setTimeRemaining(0);
         setShowCongratulations(true);
         setCalculatingResults(true);
+        setIsSessionComplete(true);
         
         if (testSessionId) {
           const completeSession = async () => {
             try {
               await completeTestSession(testSessionId);
               console.log('Test session completed after last message');
-              await analyzeDialogsAndSaveResults(testSessionId);
+              
+              // Запускаем анализ диалогов и сохранение результатов только если это первое завершение
+              if (!isSessionComplete) {
+                await analyzeDialogsAndSaveResults(testSessionId);
+              }
             } catch (error) {
               console.error('Error completing test session:', error);
               setCalculatingResults(false);
@@ -706,7 +738,7 @@ function Chat() {
         }
       }
     }
-  }, [userStatus, timeRemaining, testSessionId]);
+  }, [userStatus, timeRemaining, testSessionId, isSessionComplete]);
 
   const formatTime = (seconds: number) => {
     const minutes = Math.floor(seconds / 60);
@@ -806,7 +838,7 @@ function Chat() {
 
     // Формируем контент сообщения с учетом ценника
     const priceInfo = selectedPrice ? ` [Цена: ${selectedPrice}]` : '';
-    
+
     const newMessage = {
       id: `user-${Date.now()}`,
       sender: 'You',
@@ -830,20 +862,20 @@ function Chat() {
     setLoadingStates(prev => ({ ...prev, [selectedUser]: true }));
 
     const sendPhotoMessage = async () => {
-      try {
-        // Определяем номер чата на основе выбранного пользователя
-        const chatNumber = users.findIndex(user => user.name === selectedUser) + 1;
-        if (chatNumber < 1 || chatNumber > 4) {
-          throw new Error('Invalid chat number');
-        }
+    try {
+      // Определяем номер чата на основе выбранного пользователя
+      const chatNumber = users.findIndex(user => user.name === selectedUser) + 1;
+      if (chatNumber < 1 || chatNumber > 4) {
+        throw new Error('Invalid chat number');
+      }
 
-        // Сохраняем сообщение пользователя в чат
-        const chatMessage: SupabaseChatMessage = {
+      // Сохраняем сообщение пользователя в чат
+      const chatMessage: SupabaseChatMessage = {
           content: `[Фото ${tempSelectedImage.match(/\/(\d+)\.jpg$/)?.[1] || ''}] [${preloadedImages.find(img => img.url === tempSelectedImage)?.prompt || 'Пользователь отправил изображение'}]${priceInfo} [модель отправила фото]`,
-          time: new Date().toISOString(),
-          isOwn: true,
-          isRead: true
-        };
+        time: new Date().toISOString(),
+        isOwn: true,
+        isRead: true
+      };
 
         const updatedChat = await addMessageToTestSession(
           currentTestSessionId,
@@ -851,125 +883,125 @@ function Chat() {
           chatMessage
         );
 
-        // Получаем историю сообщений для текущего пользователя
-        const chatHistory = chatHistories[selectedUser];
-        
-        // Создаем массив сообщений для отправки в API
-        let messagesToSend = chatHistory.map(msg => ({
-          role: msg.isOwn ? 'user' : 'assistant',
-          content: msg.imageUrl 
+      // Получаем историю сообщений для текущего пользователя
+      const chatHistory = chatHistories[selectedUser];
+      
+      // Создаем массив сообщений для отправки в API
+      let messagesToSend = chatHistory.map(msg => ({
+        role: msg.isOwn ? 'user' : 'assistant',
+        content: msg.imageUrl 
             ? `[Фото ${msg.imageUrl.match(/\/(\d+)\.jpg$/)?.[1] || ''}] [${preloadedImages.find(img => img.url === msg.imageUrl)?.prompt || 'Пользователь отправил изображение'}]${msg.price ? ` [Цена: ${msg.price}]` : ''} [модель отправила фото]` 
-            : msg.content
-        })) as { role: 'user' | 'assistant' | 'system', content: string }[];
-        
-        messagesToSend.push({
-          role: 'user',
+          : msg.content
+      })) as { role: 'user' | 'assistant' | 'system', content: string }[];
+      
+      messagesToSend.push({
+        role: 'user',
           content: `[Фото ${tempSelectedImage.match(/\/(\d+)\.jpg$/)?.[1] || ''}] [${preloadedImages.find(img => img.url === tempSelectedImage)?.prompt || 'Пользователь отправил изображение'}]${priceInfo} [модель отправила фото]`
+      });
+
+      // Если это первое сообщение в чате, добавляем системный промпт
+      if (chatHistory.length === 0) {
+        messagesToSend.unshift({
+          role: 'system',
+          content: userPrompts[selectedUser]
         });
+      }
 
-        // Если это первое сообщение в чате, добавляем системный промпт
-        if (chatHistory.length === 0) {
-          messagesToSend.unshift({
-            role: 'system',
-            content: userPrompts[selectedUser]
-          });
+      // Получаем данные о существующем разговоре с Grok, если они есть
+      const conversationDetails = userConversations[selectedUser];
+      
+      const grokResponse = await generateGrokResponse(
+        messagesToSend,
+        conversationDetails
+      );
+
+      // Сохраняем информацию о разговоре для будущих сообщений
+      setUserConversations(prev => ({
+        ...prev,
+        [selectedUser]: {
+          conversationId: grokResponse.conversation_id,
+          parentResponseId: grokResponse.parent_response_id,
+          chatLink: grokResponse.chat_link
         }
+      }));
 
-        // Получаем данные о существующем разговоре с Grok, если они есть
-        const conversationDetails = userConversations[selectedUser];
-        
-        const grokResponse = await generateGrokResponse(
-          messagesToSend,
-          conversationDetails
-        );
-
-        // Сохраняем информацию о разговоре для будущих сообщений
-        setUserConversations(prev => ({
-          ...prev,
-          [selectedUser]: {
-            conversationId: grokResponse.conversation_id,
-            parentResponseId: grokResponse.parent_response_id,
-            chatLink: grokResponse.chat_link
-          }
-        }));
-
-        if (grokResponse.error) {
-          const errorMessage = {
-            id: `error-${Date.now()}`,
-            sender: selectedUser,
-            content: `Ошибка: ${grokResponse.error}`,
-            time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true }),
-            isOwn: false,
-            isRead: false,
-            error: true,
-            errorDetails: grokResponse.error
-          };
-
-          setChatHistories(prev => ({
-            ...prev,
-            [selectedUser]: [...prev[selectedUser], errorMessage]
-          }));
-        } else {
-          // Имитируем печатание ответа перед его отображением
-          await simulateTypingDelay(selectedUser);
-          
-          // Сохраняем ответ ассистента в чат
-          const assistantChatMessage: SupabaseChatMessage = {
-            content: grokResponse.response,
-            time: new Date().toISOString(),
-            isOwn: false,
-            isRead: false
-          };
-
-          await addMessageToTestSession(
-            currentTestSessionId,
-            chatNumber as 1 | 2 | 3 | 4,
-            assistantChatMessage
-          );
-
-          const assistantMessage = {
-            id: `assistant-${Date.now()}`,
-            sender: selectedUser,
-            content: grokResponse.response,
-            time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true }),
-            isOwn: false,
-            isRead: false
-          };
-
-          setChatHistories(prev => ({
-            ...prev,
-            [selectedUser]: [...prev[selectedUser], assistantMessage]
-          }));
-        }
-
-        setUserStatus(prev => ({
-          ...prev,
-          [selectedUser]: {
-            ...prev[selectedUser],
-            isTyping: false,
-            lastMessageId: `assistant-${Date.now()}`
-          }
-        }));
-      } catch (error) {
-        console.error('Error in sending photo message:', error);
-        
+      if (grokResponse.error) {
         const errorMessage = {
           id: `error-${Date.now()}`,
           sender: selectedUser,
-          content: 'Произошла ошибка при отправке фото. Пожалуйста, попробуйте еще раз.',
+          content: `Ошибка: ${grokResponse.error}`,
           time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true }),
           isOwn: false,
           isRead: false,
-          error: true
+          error: true,
+          errorDetails: grokResponse.error
         };
 
         setChatHistories(prev => ({
           ...prev,
           [selectedUser]: [...prev[selectedUser], errorMessage]
         }));
-      } finally {
-        setLoadingStates(prev => ({ ...prev, [selectedUser]: false }));
+      } else {
+        // Имитируем печатание ответа перед его отображением
+        await simulateTypingDelay(selectedUser);
+        
+        // Сохраняем ответ ассистента в чат
+        const assistantChatMessage: SupabaseChatMessage = {
+          content: grokResponse.response,
+          time: new Date().toISOString(),
+          isOwn: false,
+          isRead: false
+        };
+
+        await addMessageToTestSession(
+          currentTestSessionId,
+          chatNumber as 1 | 2 | 3 | 4,
+          assistantChatMessage
+        );
+
+        const assistantMessage = {
+          id: `assistant-${Date.now()}`,
+          sender: selectedUser,
+          content: grokResponse.response,
+          time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true }),
+          isOwn: false,
+          isRead: false
+        };
+
+        setChatHistories(prev => ({
+          ...prev,
+          [selectedUser]: [...prev[selectedUser], assistantMessage]
+        }));
       }
+
+      setUserStatus(prev => ({
+        ...prev,
+        [selectedUser]: {
+          ...prev[selectedUser],
+          isTyping: false,
+          lastMessageId: `assistant-${Date.now()}`
+        }
+      }));
+    } catch (error) {
+        console.error('Error in sending photo message:', error);
+      
+      const errorMessage = {
+        id: `error-${Date.now()}`,
+        sender: selectedUser,
+          content: 'Произошла ошибка при отправке фото. Пожалуйста, попробуйте еще раз.',
+        time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true }),
+        isOwn: false,
+        isRead: false,
+        error: true
+      };
+
+      setChatHistories(prev => ({
+        ...prev,
+        [selectedUser]: [...prev[selectedUser], errorMessage]
+      }));
+    } finally {
+      setLoadingStates(prev => ({ ...prev, [selectedUser]: false }));
+    }
     };
 
     // Запускаем асинхронную отправку фото
@@ -1046,11 +1078,48 @@ function Chat() {
     }
   }, [chatHistories, selectedUser]);
 
+  // Добавляем эффект для проверки и загрузки результатов анализа, если они не загружены
+  useEffect(() => {
+    if (showCongratulations && !calculatingResults && !analysisResult && testSessionId) {
+      console.log('Modal is shown but no analysis result is available, trying to load it...');
+      const loadAnalysisResult = async () => {
+        try {
+          // Создаем базовый результат анализа для отображения до загрузки реальных результатов
+          const tempResult: DialogAnalysisResult = {
+            dialog_analysis: {
+              metrics: {
+                engagement: { score: 3.0, verdict: "Загрузка результатов..." },
+                charm_and_tone: { score: 3.0, verdict: "Загрузка результатов..." },
+                creativity: { score: 3.0, verdict: "Загрузка результатов..." },
+                adaptability: { score: 3.0, verdict: "Загрузка результатов..." },
+                self_promotion: { score: 3.0, verdict: "Загрузка результатов..." },
+                pricing_policy: { score: 3.0, verdict: "Загрузка результатов...", strengths: [], improvements: [] }
+              },
+              overall_conclusion: "Загрузка результатов анализа, пожалуйста подождите..."
+            }
+          };
+          
+          // Устанавливаем временный результат
+          setAnalysisResult(tempResult);
+          
+          // Пытаемся загрузить реальные результаты
+          await analyzeDialogsAndSaveResults(testSessionId);
+        } catch (error) {
+          console.error('Error loading analysis results:', error);
+        }
+      };
+      
+      loadAnalysisResult();
+    }
+  }, [showCongratulations, calculatingResults, analysisResult, testSessionId]);
+
   // Обработчик для кнопки "До свидания"
   const handleGoodbye = () => {
+    console.log('Navigating to test results with sessionId:', testSessionId);
     if (testSessionId) {
       navigate(`/test-results/${testSessionId}`);
     } else {
+      console.error('No test session ID found');
       navigate('/admin');
     }
   };
@@ -1161,21 +1230,66 @@ function Chat() {
       } else {
         console.error('No valid analysis result found in response');
         
+        // Создаем базовый результат анализа, чтобы избежать отображения ошибки
+        const defaultResult: DialogAnalysisResult = {
+          dialog_analysis: {
+            metrics: {
+              engagement: { score: 3.0, verdict: "Результат по умолчанию" },
+              charm_and_tone: { score: 3.0, verdict: "Результат по умолчанию" },
+              creativity: { score: 3.0, verdict: "Результат по умолчанию" },
+              adaptability: { score: 3.0, verdict: "Результат по умолчанию" },
+              self_promotion: { score: 3.0, verdict: "Результат по умолчанию" },
+              pricing_policy: { score: 3.0, verdict: "Результат по умолчанию", strengths: [], improvements: [] }
+            },
+            overall_conclusion: "Автоматический анализ не удался, поэтому отображены результаты по умолчанию."
+          }
+        };
+        
+        // Устанавливаем результат по умолчанию
+        setAnalysisResult(defaultResult);
+        setAnalysisComplete(true);
+        
         // Даже если анализ не удался, сохраняем базовую запись в БД
         try {
           console.log('Saving basic test result without analysis data');
           await saveTestResult({
             test_session_id: sessionId,
             employee_id: session.employee_id,
-            raw_prompt: prompt
+            raw_prompt: prompt,
+            analysis_result: defaultResult,
+            engagement_score: 3.0,
+            charm_tone_score: 3.0,
+            creativity_score: 3.0,
+            adaptability_score: 3.0,
+            self_promotion_score: 3.0,
+            overall_score: 3.0
           });
-          console.log('Created basic test result record without analysis data');
+          console.log('Created basic test result record with default data');
         } catch (saveError) {
           console.error('Failed to save basic test result:', saveError);
         }
       }
     } catch (error) {
       console.error('Error in analyzeDialogsAndSaveResults:', error);
+      
+      // Создаем результат при ошибке анализа
+      const errorResult: DialogAnalysisResult = {
+        dialog_analysis: {
+          metrics: {
+            engagement: { score: 3.0, verdict: "Ошибка анализа" },
+            charm_and_tone: { score: 3.0, verdict: "Ошибка анализа" },
+            creativity: { score: 3.0, verdict: "Ошибка анализа" },
+            adaptability: { score: 3.0, verdict: "Ошибка анализа" },
+            self_promotion: { score: 3.0, verdict: "Ошибка анализа" },
+            pricing_policy: { score: 3.0, verdict: "Ошибка анализа", strengths: [], improvements: [] }
+          },
+          overall_conclusion: "Произошла ошибка при анализе диалогов."
+        }
+      };
+      
+      // Устанавливаем результат при ошибке
+      setAnalysisResult(errorResult);
+      setAnalysisComplete(true);
     } finally {
       // В любом случае завершаем расчет результатов
       setCalculatingResults(false);
@@ -1232,48 +1346,68 @@ function Chat() {
 
     setMessage('');
     setSelectedImage(null);
-    setSelectedPrice('FREE');
     setLoadingStates(prev => ({ ...prev, [selectedUser]: true }));
 
     try {
+      // Определяем номер чата на основе выбранного пользователя
       const chatNumber = users.findIndex(user => user.name === selectedUser) + 1;
-      
       if (chatNumber < 1 || chatNumber > 4) {
         throw new Error('Invalid chat number');
       }
 
-      const chatMessage = {
+      // Сохраняем сообщение пользователя в базу данных
+      const chatMessage: SupabaseChatMessage = {
         content: messageContent,
         time: new Date().toISOString(),
         isOwn: true,
         isRead: true
       };
 
-      await addMessageToTestSession(
+      const updatedChat = await addMessageToTestSession(
         currentTestSessionId,
         chatNumber as 1 | 2 | 3 | 4,
         chatMessage
       );
 
+      // Получаем историю сообщений для текущего пользователя
       const chatHistory = chatHistories[selectedUser];
-      const messagesToSend: { role: 'user' | 'assistant' | 'system', content: string }[] = chatHistory.map(msg => ({
+      
+      // Создаем массив сообщений для отправки в API
+      let messagesToSend = chatHistory.map(msg => ({
         role: msg.isOwn ? 'user' : 'assistant',
         content: msg.content
-      }));
-
+      })) as { role: 'user' | 'assistant' | 'system', content: string }[];
+      
       messagesToSend.push({
         role: 'user',
         content: messageContent
       });
 
-      // Всегда добавляем системный промпт в начало массива
-      messagesToSend.unshift({
-        role: 'system',
-        content: userPrompts[selectedUser]
-      });
+      // Если это первое сообщение в чате, добавляем системный промпт
+      if (chatHistory.length === 0) {
+        messagesToSend.unshift({
+          role: 'system',
+          content: userPrompts[selectedUser]
+        });
+      }
 
+      // Получаем данные о существующем разговоре с Grok, если они есть
       const conversationDetails = userConversations[selectedUser];
-      const grokResponse = await generateGrokResponse(messagesToSend, conversationDetails);
+      
+      const grokResponse = await generateGrokResponse(
+        messagesToSend,
+        conversationDetails
+      );
+
+      // Сохраняем информацию о разговоре для будущих сообщений
+      setUserConversations(prev => ({
+        ...prev,
+        [selectedUser]: {
+          conversationId: grokResponse.conversation_id,
+          parentResponseId: grokResponse.parent_response_id,
+          chatLink: grokResponse.chat_link
+        }
+      }));
 
       if (grokResponse.error) {
         const errorMessage = {
@@ -1283,7 +1417,8 @@ function Chat() {
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           isOwn: false,
           isRead: false,
-          error: true
+          error: true,
+          errorDetails: grokResponse.error
         };
 
         setChatHistories(prev => ({
@@ -1291,22 +1426,32 @@ function Chat() {
           [selectedUser]: [...prev[selectedUser], errorMessage]
         }));
       } else {
-        setUserConversations(prev => ({
-          ...prev,
-          [selectedUser]: {
-            conversationId: grokResponse.conversation_id,
-            parentResponseId: grokResponse.parent_response_id,
-            chatLink: grokResponse.chat_link
-          }
-        }));
-
+        // Имитируем печатание ответа перед его отображением
         await simulateTypingDelay(selectedUser);
-
-        const assistantMessage = {
-          id: `assistant-${Date.now()}`,
-          sender: selectedUser,
-          content: grokResponse.response,
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        
+        // Проверяем, содержит ли ответ теги [Купил] или [Не купил]
+        const responseContent = grokResponse.response;
+        console.log('Оригинальный ответ:', responseContent);
+        
+        const boughtTag = responseContent.includes('[Bought]');
+        const notBoughtTag = responseContent.includes('[Not Bought]');
+        
+        console.log('Найдены теги:', { boughtTag, notBoughtTag });
+        
+        // Удаляем все теги в квадратных скобках из отображаемого текста
+        let cleanResponse = responseContent
+          .replace(/\[\s*Bought\s*\]/gi, '')  // Более точное удаление тега [Bought]
+          .replace(/\[\s*Not\s*Bought\s*\]/gi, '')  // Более точное удаление тега [Not Bought]
+          .replace(/\[[^\]]*\]/g, '')  // Удаляем все оставшиеся теги в формате [текст]
+          .replace(/\s+/g, ' ')  // Заменяем множественные пробелы на один
+          .trim();
+        
+        console.log('Очищенный ответ:', cleanResponse);
+        
+        // Сохраняем ответ ассистента в чат
+        const assistantChatMessage: SupabaseChatMessage = {
+          content: grokResponse.response, // Сохраняем оригинальный ответ в базе данных
+          time: new Date().toISOString(),
           isOwn: false,
           isRead: false
         };
@@ -1314,28 +1459,81 @@ function Chat() {
         await addMessageToTestSession(
           currentTestSessionId,
           chatNumber as 1 | 2 | 3 | 4,
-          {
-            content: grokResponse.response,
-            time: new Date().toISOString(),
-            isOwn: false,
-            isRead: false
-          }
+          assistantChatMessage
         );
+
+        const assistantMessage = {
+          id: `assistant-${Date.now()}`,
+          sender: selectedUser,
+          content: cleanResponse, // Используем очищенный ответ без тегов
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          isOwn: false,
+          isRead: false
+        };
 
         setChatHistories(prev => ({
           ...prev,
           [selectedUser]: [...prev[selectedUser], assistantMessage]
         }));
-
-        setUserStatus(prev => ({
-          ...prev,
-          [selectedUser]: {
-            ...prev[selectedUser],
-            isTyping: false,
-            lastMessageId: assistantMessage.id
+        
+        // Если ответ содержит тег [Bought] и в сообщении перед ним было фото с ценой,
+        // обновляем статус фото на "bought"
+        if (boughtTag) {
+          console.log('Обнаружен тег [Bought], ищем последнее фото пользователя...');
+          
+          // Находим последнее сообщение с фотографией от пользователя
+          const chatHistoryReversed = [...chatHistory].reverse();
+          console.log('История чата (в обратном порядке):', chatHistoryReversed);
+          
+          const lastUserPhotoMsgIndex = chatHistoryReversed.findIndex(
+            msg => msg.isOwn && (msg.imageUrl || (msg.content && msg.content.includes('[Фото')))
+          );
+          
+          console.log('Индекс последнего фото (в обратном порядке):', lastUserPhotoMsgIndex);
+          
+          if (lastUserPhotoMsgIndex !== -1) {
+            const realIndex = chatHistory.length - 1 - lastUserPhotoMsgIndex;
+            const photoMsg = chatHistory[realIndex];
+            
+            console.log('Найдено фото для отметки как купленное:', {
+              index: realIndex,
+              photoMsg,
+              hasPrice: Boolean(photoMsg.price),
+              priceValue: photoMsg.price
+            });
+            
+            // Обновляем статус фото на "bought"
+            setChatHistories(prev => {
+              const newHistory = [...prev[selectedUser]];
+              // Только если цена не равна FREE и не пуста
+              if (photoMsg.price && photoMsg.price !== 'FREE') {
+                console.log('Обновляем статус фото на bought=true');
+                newHistory[realIndex] = {
+                  ...photoMsg,
+                  bought: true // Добавляем флаг, что фото куплено
+                };
+              } else {
+                console.log('Фото не имеет цены или цена FREE, не меняем статус');
+              }
+              return {
+                ...prev,
+                [selectedUser]: newHistory
+              };
+            });
+          } else {
+            console.log('Не найдено подходящего фото для отметки как купленное');
           }
-        }));
+        }
       }
+
+      setUserStatus(prev => ({
+        ...prev,
+        [selectedUser]: {
+          ...prev[selectedUser],
+          isTyping: false,
+          lastMessageId: `assistant-${Date.now()}`
+        }
+      }));
     } catch (error) {
       console.error('Error sending message:', error);
       const errorMessage = {
@@ -1473,23 +1671,21 @@ function Chat() {
                         )}
                       </span>
                     </div>
-                    {analysisResult && (
-                      <>
                         <div className="w-full h-px bg-gray-700 my-3"></div>
                         <div className="flex justify-between mb-2">
                           <span className="text-gray-400">Общий рейтинг:</span>
                           <span className="text-green-500 font-semibold">
-                            {((
+                        {analysisResult ? (
+                          ((
                               analysisResult.dialog_analysis.metrics.engagement.score +
                               analysisResult.dialog_analysis.metrics.charm_and_tone.score +
                               analysisResult.dialog_analysis.metrics.creativity.score +
                               analysisResult.dialog_analysis.metrics.adaptability.score +
                               analysisResult.dialog_analysis.metrics.self_promotion.score
-                            ) / 5).toFixed(1)} / 5
+                          ) / 5).toFixed(1)
+                        ) : '3.0'} / 5
                           </span>
                         </div>
-                      </>
-                    )}
                   </div>
                   <button
                     onClick={handleGoodbye}
@@ -1605,77 +1801,127 @@ function Chat() {
               const priceMatch = msg.content.match(/\[Цена: (.*?)\]/);
               const price = msg.price || (priceMatch ? priceMatch[1] : null);
               
+              // Очищаем текст от тегов [Купил] и [Не купил] непосредственно при рендеринге
+              let displayContent = msg.content;
+              if (!msg.isOwn && !msg.isTyping) {
+                // Только для сообщений от бота, убираем все теги
+                displayContent = displayContent
+                  .replace(/\[\s*Bought\s*\]/gi, '')  // Более точное удаление тега [Bought]
+                  .replace(/\[\s*Not\s*Bought\s*\]/gi, '')  // Более точное удаление тега [Not Bought]
+                  .replace(/\[[^\]]*\]/g, '')  // Удаляем все оставшиеся теги в формате [текст]
+                  .replace(/\s+/g, ' ')  // Заменяем множественные пробелы на один
+                  .trim();
+                
+                // Проверяем наличие тегов [Bought] для обновления статуса фото
+                if (msg.content.includes('[Bought]')) {
+                  // Находим последнее фото от пользователя
+                  const chatIndex = chatHistories[selectedUser].indexOf(msg);
+                  if (chatIndex > 0) {
+                    for (let i = chatIndex - 1; i >= 0; i--) {
+                      const photoMsg = chatHistories[selectedUser][i];
+                      if (photoMsg.isOwn && (photoMsg.imageUrl || photoMsg.content.includes('[Фото'))) {
+                        // Если найдено фото и оно имеет цену, обновляем статус
+                        if (photoMsg.price && photoMsg.price !== 'FREE' && !photoMsg.bought) {
+                          // Используем setTimeout, чтобы обновить состояние после рендеринга
+                          setTimeout(() => {
+                            setChatHistories(prev => {
+                              const newHistory = [...prev[selectedUser]];
+                              newHistory[i] = {
+                                ...photoMsg,
+                                bought: true
+                              };
+                              console.log('Обновлен статус фото на "купленное":', newHistory[i]);
+                              return {
+                                ...prev,
+                                [selectedUser]: newHistory
+                              };
+                            });
+                          }, 0);
+                        }
+                        break;
+                      }
+                    }
+                  }
+                }
+              }
+              
               return (
+              <div
+                key={msg.id}
+                className={`flex ${msg.isOwn ? 'justify-end' : 'justify-start'}`}
+                onClick={() => msg.error && handleRetry(msg)}
+              >
                 <div
-                  key={msg.id}
-                  className={`flex ${msg.isOwn ? 'justify-end' : 'justify-start'}`}
-                  onClick={() => msg.error && handleRetry(msg)}
+                  className={`max-w-[70%] rounded-2xl p-3 ${
+                    msg.isOwn
+                      ? 'bg-gradient-to-r from-pink-500 to-purple-500'
+                      : msg.error
+                      ? 'bg-red-500/20 border border-red-500/40 cursor-pointer hover:bg-red-500/30'
+                      : msg.isTyping
+                      ? 'bg-[#2d2d2d] border border-[#3d3d3d]'
+                      : 'bg-[#3d3d3d]'
+                  }`}
                 >
-                  <div
-                    className={`max-w-[70%] rounded-2xl p-3 ${
-                      msg.isOwn
-                        ? 'bg-gradient-to-r from-pink-500 to-purple-500'
-                        : msg.error
-                        ? 'bg-red-500/20 border border-red-500/40 cursor-pointer hover:bg-red-500/30'
-                        : msg.isTyping
-                        ? 'bg-[#2d2d2d] border border-[#3d3d3d]'
-                        : 'bg-[#3d3d3d]'
-                    }`}
-                  >
-                    {msg.error && (
-                      <div className="space-y-2 mb-2">
-                        <div className="flex items-center gap-2">
-                          <AlertCircle className="w-4 h-4 text-red-500" />
-                          <span className="text-sm text-red-400">Ошибка отправки</span>
+                  {msg.error && (
+                    <div className="space-y-2 mb-2">
+                      <div className="flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4 text-red-500" />
+                        <span className="text-sm text-red-400">Ошибка отправки</span>
+                      </div>
+                      {msg.errorDetails && (
+                        <div className="flex items-start gap-2 bg-red-500/10 p-2 rounded">
+                          <Info className="w-4 h-4 text-red-400 mt-0.5" />
+                          <p className="text-xs text-red-400">{msg.errorDetails}</p>
                         </div>
-                        {msg.errorDetails && (
-                          <div className="flex items-start gap-2 bg-red-500/10 p-2 rounded">
-                            <Info className="w-4 h-4 text-red-400 mt-0.5" />
-                            <p className="text-xs text-red-400">{msg.errorDetails}</p>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    {msg.isTyping ? (
-                      <div className="flex items-center space-x-2">
-                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '200ms' }} />
-                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '400ms' }} />
-                      </div>
-                    ) : (
-                      <>
-                        <p>{imagePrompt ? '' : msg.content}</p>
+                      )}
+                    </div>
+                  )}
+                  {msg.isTyping ? (
+                    <div className="flex items-center space-x-2">
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '200ms' }} />
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '400ms' }} />
+                    </div>
+                  ) : (
+                    <>
+                        <p>{imagePrompt ? '' : displayContent}</p>
                         {(msg.imageUrl || imagePrompt) && (
                           <div className="mt-1 rounded-md overflow-hidden">
                             <div className="relative">
                               <img 
                                 src={msg.imageUrl || `/foto/${msg.content.match(/\[Фото (\d+)\]/)?.[1]}.jpg`} 
-                                alt="Отправленное изображение" 
+                            alt="Отправленное изображение" 
                                 className="max-w-[200px] h-auto rounded-md border border-[#3d3d3d]"
-                              />
+                          />
                             </div>
-                          </div>
-                        )}
-                        <div className="flex items-center justify-end gap-2 mt-1">
+                        </div>
+                      )}
+                      <div className="flex items-center justify-end gap-2 mt-1">
                           {price && price !== 'FREE' && (
                             <>
-                              <span className="text-xs text-gray-300">paid</span>
-                              <CheckCheck className="w-4 h-4 text-gray-500" />
+                              <span className="text-xs text-white font-bold flex items-center gap-1">
+                                {msg.bought ? 'purchased' : 'pending'}
+                                {msg.bought ? (
+                                  <CheckCheck className="w-3 h-3 text-green-500" />
+                                ) : (
+                                  <Check className="w-3 h-3 text-gray-400" />
+                                )}
+                              </span>
                             </>
                           )}
-                          <p className="text-xs text-gray-300">{msg.time}</p>
-                          {msg.isOwn && (
-                            msg.isRead ? (
-                              <CheckCheck className="w-4 h-4 text-blue-500" />
-                            ) : (
-                              <Check className="w-4 h-4 text-gray-500" />
-                            )
-                          )}
-                        </div>
-                      </>
-                    )}
-                  </div>
+                        <p className="text-xs text-gray-300">{msg.time}</p>
+                        {msg.isOwn && (
+                          msg.isRead ? (
+                            <CheckCheck className="w-4 h-4 text-blue-500" />
+                          ) : (
+                            <Check className="w-4 h-4 text-gray-500" />
+                          )
+                        )}
+                      </div>
+                    </>
+                  )}
                 </div>
+              </div>
               );
             })}
           </div>
@@ -1726,18 +1972,18 @@ function Chat() {
           {selectedImage && (
             <div className="p-2 border-t border-[#3d3d3d] bg-[#2d2d2d]">
               <div className="flex items-center gap-3">
-                <div className="relative inline-block">
-                  <img 
-                    src={selectedImage} 
-                    alt="Preview" 
+              <div className="relative inline-block">
+                <img 
+                  src={selectedImage} 
+                  alt="Preview" 
                     className="h-16 w-auto rounded-md border border-[#3d3d3d]" 
-                  />
-                  <button 
-                    onClick={handleRemoveImage}
+                />
+                <button 
+                  onClick={handleRemoveImage}
                     className="absolute -top-1 -right-1 bg-red-500 rounded-full p-0.5"
-                  >
+                >
                     <X className="w-3 h-3" />
-                  </button>
+                </button>
                 </div>
                 
                 {/* Отображаем выбранную цену рядом с превью */}
