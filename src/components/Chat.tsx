@@ -19,7 +19,7 @@ import {
 } from '../lib/supabase';
 
 // Типы для использования в Chat компоненте
-type MessageRoleInternal = 'user' | 'assistant';
+type MessageRoleInternal = 'user' | 'assistant' | 'system';
 
 // Интерфейс для сообщений API Grok
 interface GrokMessage {
@@ -38,6 +38,7 @@ interface Message {
   error?: boolean;
   errorDetails?: string;
   imageUrl?: string;
+  price?: string; // Добавляем поле для цены
 }
 
 interface ChatHistory {
@@ -262,7 +263,7 @@ function generateUUID() {
 function Chat() {
   const [message, setMessage] = useState('');
   const [selectedUser, setSelectedUser] = useState('Marcus');
-  const [timeRemaining, setTimeRemaining] = useState(1200);
+  const [timeRemaining, setTimeRemaining] = useState(300);
   const [showCongratulations, setShowCongratulations] = useState(false);
   const [calculatingResults, setCalculatingResults] = useState(false);
   const [isSessionComplete, setIsSessionComplete] = useState(false);
@@ -271,6 +272,9 @@ function Chat() {
   const [testSessionId, setTestSessionId] = useState<string | null>(null);
   const [showPromptModal, setShowPromptModal] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [selectedPrice, setSelectedPrice] = useState<string>('FREE'); // Изначальное значение FREE
+  const [showPriceModal, setShowPriceModal] = useState(false); // Состояние для отображения модального окна цены
+  const [tempSelectedImage, setTempSelectedImage] = useState<string | null>(null); // Временное хранение выбранного изображения
   const [customImages, setCustomImages] = useState<CustomImage[]>([]);
   const [activeTab, setActiveTab] = useState<'preloaded' | 'custom'>('preloaded');
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -768,285 +772,21 @@ function Chat() {
     setShowImageGallery(prev => !prev);
   };
 
+  // Модифицируем функцию selectImage для открытия модального окна с ценой
   const selectImage = (imageUrl: string) => {
-    setSelectedImage(imageUrl);
-    setShowImageGallery(false);
+    setTempSelectedImage(imageUrl); // Сохраняем выбранное изображение во временную переменную
+    setSelectedPrice('FREE'); // Устанавливаем начальное значение FREE
+    setShowPriceModal(true); // Показываем модальное окно для ввода цены
+    setShowImageGallery(false); // Закрываем галерею изображений
   };
 
-  const handleRemoveImage = () => {
-    setSelectedImage(null);
-  };
-
-  const handleUploadClick = () => {
-    if (fileInputRef.current) {
-      fileInputRef.current.click();
-    }
-  };
-
-  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    const file = files[0];
-    if (!file.type.startsWith('image/')) {
-      alert('Пожалуйста, выберите изображение');
-      return;
-    }
-
-    setUploadingImage(true);
-
-    // Create a FileReader to read the image
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      if (event.target && event.target.result) {
-        const imageUrl = event.target.result as string;
-        
-        // Create a thumbnail using canvas
-        const imgElement = document.createElement('img');
-        imgElement.onload = () => {
-          // Create a canvas for the thumbnail
-          const canvas = document.createElement('canvas');
-          const ctx = canvas.getContext('2d');
-          
-          // Calculate thumbnail dimensions (maintaining aspect ratio)
-          // For horizontal images, make width larger than height
-          const maxWidth = 300;
-          const maxHeight = 150;
-          let width = imgElement.width;
-          let height = imgElement.height;
-          
-          // Calculate aspect ratio
-          const aspectRatio = width / height;
-          
-          // Resize to fit within maxWidth x maxHeight while maintaining aspect ratio
-          if (aspectRatio > 1) { // Landscape orientation
-            width = maxWidth;
-            height = width / aspectRatio;
-          } else { // Portrait orientation - force to landscape
-            height = maxHeight;
-            width = maxWidth; // Force wider thumbnail
-          }
-          
-          canvas.width = width;
-          canvas.height = height;
-          
-          // Draw the image on the canvas
-          if (ctx) {
-            // Fill with black background for portrait images
-            if (aspectRatio < 1) {
-              ctx.fillStyle = '#000';
-              ctx.fillRect(0, 0, width, height);
-              
-              // Calculate centered position
-              const centerX = (width - (height * aspectRatio)) / 2;
-              ctx.drawImage(imgElement, centerX, 0, height * aspectRatio, height);
-            } else {
-              ctx.drawImage(imgElement, 0, 0, width, height);
-            }
-            
-            // Get the thumbnail as a data URL
-            const thumbnailUrl = canvas.toDataURL(file.type);
-            
-            // Create a new custom image
-            const newImage: CustomImage = {
-              id: `custom-${Date.now()}`,
-              url: imageUrl,
-              thumbnail: thumbnailUrl,
-              description: file.name,
-              prompt: ''
-            };
-            
-            // Add the new image to the custom images array
-            setCustomImages(prev => [...prev, newImage]);
-            
-            // Switch to the custom tab
-            setActiveTab('custom');
-            
-            setUploadingImage(false);
-          }
-        };
-        
-        imgElement.src = imageUrl;
-      }
-    };
+  // Функция для подтверждения выбора изображения и цены
+  const confirmImageSelection = () => {
+    // Закрываем модальное окно
+    setShowPriceModal(false);
     
-    reader.readAsDataURL(file);
-    
-    // Reset the file input
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-  };
-
-  const handleDeleteCustomImage = (imageId: string) => {
-    setCustomImages(prev => prev.filter(img => img.id !== imageId));
-    
-    // If the deleted image was selected, clear the selection
-    if (selectedImage && customImages.find(img => img.id === imageId)?.url === selectedImage) {
-      setSelectedImage(null);
-    }
-  };
-
-  const handleRetry = async (failedMessage: Message) => {
-    // Find the last user message before the error
-    const chatHistory = chatHistories[selectedUser];
-    const failedIndex = chatHistory.findIndex(msg => msg.id === failedMessage.id);
-    
-    if (failedIndex <= 0) return;
-    
-    // Get the last user message before the error
-    let lastUserMessageIndex = -1;
-    for (let i = failedIndex - 1; i >= 0; i--) {
-      if (chatHistory[i].isOwn) {
-        lastUserMessageIndex = i;
-        break;
-      }
-    }
-    
-    if (lastUserMessageIndex === -1) return;
-    
-    // Remove the error message
-    setChatHistories(prev => ({
-      ...prev,
-      [selectedUser]: prev[selectedUser].filter(msg => msg.id !== failedMessage.id)
-    }));
-    
-    // Set loading state
-    setLoadingStates(prev => ({ ...prev, [selectedUser]: true }));
-    setRetryingMessage(failedMessage);
-
-    try {
-      const storedSessionId = sessionStorage.getItem('currentTestSessionId');
-      if (!storedSessionId) {
-        throw new Error('No test session ID available');
-      }
-
-      // Определяем номер чата на основе выбранного пользователя
-      const chatNumber = users.findIndex(user => user.name === selectedUser) + 1;
-      if (chatNumber < 1 || chatNumber > 4) {
-        throw new Error('Invalid chat number');
-      }
-
-      // Получаем историю сообщений для текущего пользователя
-      const messagesToSend = chatHistory.slice(0, failedIndex).map(msg => ({
-        role: msg.isOwn ? 'user' : 'assistant',
-        content: msg.imageUrl 
-          ? `${msg.content} [Пользователь отправил изображение]` 
-          : msg.content
-      })) as { role: 'user' | 'assistant' | 'system', content: string }[];
-
-      // Добавляем систему подсказку, если это первые сообщения в чате
-      if (messagesToSend.length > 0 && !messagesToSend.some(msg => msg.role === 'system')) {
-        messagesToSend.unshift({
-          role: 'system',
-          content: userPrompts[selectedUser]
-        });
-      }
-
-      // Получаем данные о существующем разговоре с Grok, если они есть
-      const conversationDetails = userConversations[selectedUser];
-      
-      const grokResponse = await generateGrokResponse(
-        messagesToSend,
-        conversationDetails
-      );
-
-      // Сохраняем информацию о разговоре для будущих сообщений
-      setUserConversations(prev => ({
-        ...prev,
-        [selectedUser]: {
-          conversationId: grokResponse.conversation_id,
-          parentResponseId: grokResponse.parent_response_id,
-          chatLink: grokResponse.chat_link
-        }
-      }));
-
-      if (grokResponse.error) {
-        const errorMessage = {
-          id: `error-${Date.now()}`,
-          sender: selectedUser,
-          content: `Ошибка: ${grokResponse.error}`,
-          time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true }),
-          isOwn: false,
-          isRead: false,
-          error: true,
-          errorDetails: grokResponse.error
-        };
-
-        setChatHistories(prev => ({
-          ...prev,
-          [selectedUser]: [...prev[selectedUser], errorMessage]
-        }));
-      } else {
-        // Имитируем печатание ответа перед его отображением
-        await simulateTypingDelay(selectedUser);
-        
-        // Сохраняем ответ ассистента в чат
-        const assistantChatMessage: SupabaseChatMessage = {
-          content: grokResponse.response,
-          time: new Date().toISOString(),
-          isOwn: false,
-          isRead: false
-        };
-
-        await addMessageToTestSession(
-          storedSessionId,
-          chatNumber as 1 | 2 | 3 | 4,
-          assistantChatMessage
-        );
-
-        const assistantMessage = {
-          id: `assistant-${Date.now()}`,
-          sender: selectedUser,
-          content: grokResponse.response,
-          time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true }),
-          isOwn: false,
-          isRead: false
-        };
-
-        setChatHistories(prev => ({
-          ...prev,
-          [selectedUser]: [...prev[selectedUser], assistantMessage]
-        }));
-      }
-      
-      setUserStatus(prev => ({
-        ...prev,
-        [selectedUser]: {
-          ...prev[selectedUser],
-          isTyping: false,
-          lastMessageId: `assistant-${Date.now()}`
-        }
-      }));
-    } catch (error) {
-      console.error('Error retrying message:', error);
-      
-      const errorMessage = {
-        id: `error-${Date.now()}`,
-        sender: selectedUser,
-        content: 'Произошла ошибка при повторной отправке сообщения. Пожалуйста, попробуйте еще раз.',
-        time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true }),
-        isOwn: false,
-        isRead: false,
-        error: true
-      };
-
-      setChatHistories(prev => ({
-        ...prev,
-        [selectedUser]: [...prev[selectedUser], errorMessage]
-      }));
-    } finally {
-      setLoadingStates(prev => ({ ...prev, [selectedUser]: false }));
-      setRetryingMessage(null);
-    }
-  };
-
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!message.trim() && !selectedImage) return;
-    
-    const messageContent = message.trim();
+    // Напрямую отправляем изображение в чат без прикрепления
+    if (!tempSelectedImage) return;
     
     // Получаем данные пользователя из sessionStorage
     const candidateData = JSON.parse(sessionStorage.getItem('candidateData') || '{}');
@@ -1060,228 +800,192 @@ function Chat() {
     
     // Проверяем существование тестовой сессии
     if (!currentTestSessionId) {
-      throw new Error('No test session ID found in storage. Please reload the page to create a new session.');
+      console.error('No test session ID found in storage. Please reload the page to create a new session.');
+      return;
     }
 
+    // Формируем контент сообщения с учетом ценника
+    const priceInfo = selectedPrice ? ` [Цена: ${selectedPrice}]` : '';
+    
     const newMessage = {
       id: `user-${Date.now()}`,
       sender: 'You',
-      content: messageContent,
+      content: '',
       time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true }),
       isOwn: true,
       isRead: true,
-      imageUrl: selectedImage || undefined
+      imageUrl: tempSelectedImage,
+      price: selectedPrice
     };
 
     setChatHistories(prev => ({
       ...prev,
       [selectedUser]: [...prev[selectedUser], newMessage]
     }));
-    setMessage('');
-    setSelectedImage(null);
+    
+    // Сбрасываем временное изображение и цену
+    setTempSelectedImage(null);
+    setSelectedPrice('FREE');
     
     setLoadingStates(prev => ({ ...prev, [selectedUser]: true }));
 
-    try {
-      // Определяем номер чата на основе выбранного пользователя
-      const chatNumber = users.findIndex(user => user.name === selectedUser) + 1;
-      if (chatNumber < 1 || chatNumber > 4) {
-        throw new Error('Invalid chat number');
-      }
-
-      // Сохраняем сообщение пользователя в чат
-      const chatMessage: SupabaseChatMessage = {
-        content: selectedImage 
-          ? `[Фото ${selectedImage.match(/\/(\d+)\.jpg$/)?.[1] || ''}] [${preloadedImages.find(img => img.url === selectedImage)?.prompt || 'Пользователь отправил изображение'}] [модель отправила фото]`
-          : messageContent,
-        time: new Date().toISOString(),
-        isOwn: true,
-        isRead: true
-      };
-
-      console.log('Sending message to chat:', {
-        sessionId: currentTestSessionId,
-        chatNumber,
-        message: chatMessage
-      });
-
+    const sendPhotoMessage = async () => {
       try {
+        // Определяем номер чата на основе выбранного пользователя
+        const chatNumber = users.findIndex(user => user.name === selectedUser) + 1;
+        if (chatNumber < 1 || chatNumber > 4) {
+          throw new Error('Invalid chat number');
+        }
+
+        // Сохраняем сообщение пользователя в чат
+        const chatMessage: SupabaseChatMessage = {
+          content: `[Фото ${tempSelectedImage.match(/\/(\d+)\.jpg$/)?.[1] || ''}] [${preloadedImages.find(img => img.url === tempSelectedImage)?.prompt || 'Пользователь отправил изображение'}]${priceInfo} [модель отправила фото]`,
+          time: new Date().toISOString(),
+          isOwn: true,
+          isRead: true
+        };
+
         const updatedChat = await addMessageToTestSession(
           currentTestSessionId,
           chatNumber as 1 | 2 | 3 | 4,
           chatMessage
         );
-        console.log('Message sent successfully:', updatedChat);
-      } catch (messageError) {
-        console.error('Error adding message to chat:', messageError);
+
+        // Получаем историю сообщений для текущего пользователя
+        const chatHistory = chatHistories[selectedUser];
         
-        // Проверяем существование чатов для сессии
-        try {
-          console.log('Checking chats for session:', currentTestSessionId);
-          const sessionChats = await getTestSessionChats(currentTestSessionId);
-          
-          if (!sessionChats || sessionChats.length === 0) {
-            console.warn('No chats found for session, session might be invalid. Creating new session...');
-            
-            // Удаляем старый ID сессии
-            sessionStorage.removeItem('currentTestSessionId');
-            
-            // Получаем данные соискателя
-            const candidateData = JSON.parse(sessionStorage.getItem('candidateData') || '{}');
-            console.log('Retrieved candidate data:', candidateData);
-            
-            // Создаем новую сессию
-            const employees = await getEmployees();
-            if (employees && employees.length > 0) {
-              const newSession = await createTestSession(employees[0].id);
-              
-              // Сохраняем новый ID сессии
-              currentTestSessionId = newSession.id;
-              setTestSessionId(newSession.id);
-              sessionStorage.setItem('currentTestSessionId', newSession.id);
-              console.log('Created new session:', newSession.id);
-              
-              // Пробуем снова отправить сообщение
-              const updatedChat = await addMessageToTestSession(
-                currentTestSessionId,
-                chatNumber as 1 | 2 | 3 | 4,
-                chatMessage
-              );
-              console.log('Message sent successfully after session recreation:', updatedChat);
-            } else {
-              throw new Error('No employees found to create a new session');
-            }
-          } else {
-            console.log('Found chats for session:', sessionChats.map(c => ({ id: c.id, chatNumber: c.chat_number })));
-            throw messageError; // Пробрасываем исходную ошибку
-          }
-        } catch (checkError) {
-          console.error('Error checking session chats:', checkError);
-          throw messageError; // Пробрасываем исходную ошибку
-        }
-      }
-
-      // Получаем историю сообщений для текущего пользователя
-      const chatHistory = chatHistories[selectedUser];
-      
-      // Создаем массив сообщений для отправки в API
-      let messagesToSend = chatHistory.map(msg => ({
-        role: msg.isOwn ? 'user' : 'assistant',
-        content: msg.imageUrl 
-          ? `[Фото ${msg.imageUrl.match(/\/(\d+)\.jpg$/)?.[1] || ''}] [${preloadedImages.find(img => img.url === msg.imageUrl)?.prompt || 'Пользователь отправил изображение'}] [модель отправила фото]` 
-          : msg.content
-      })) as { role: 'user' | 'assistant' | 'system', content: string }[];
-      
-      messagesToSend.push({
-        role: 'user',
-        content: newMessage.imageUrl 
-          ? `[Фото ${newMessage.imageUrl.match(/\/(\d+)\.jpg$/)?.[1] || ''}] [${preloadedImages.find(img => img.url === newMessage.imageUrl)?.prompt || 'Пользователь отправил изображение'}] [модель отправила фото]` 
-          : newMessage.content
-      });
-
-      // Если это первое сообщение в чате, добавляем системный промпт
-      if (chatHistory.length === 0) {
-        messagesToSend.unshift({
-          role: 'system',
-          content: userPrompts[selectedUser]
+        // Создаем массив сообщений для отправки в API
+        let messagesToSend = chatHistory.map(msg => ({
+          role: msg.isOwn ? 'user' : 'assistant',
+          content: msg.imageUrl 
+            ? `[Фото ${msg.imageUrl.match(/\/(\d+)\.jpg$/)?.[1] || ''}] [${preloadedImages.find(img => img.url === msg.imageUrl)?.prompt || 'Пользователь отправил изображение'}]${msg.price ? ` [Цена: ${msg.price}]` : ''} [модель отправила фото]` 
+            : msg.content
+        })) as { role: 'user' | 'assistant' | 'system', content: string }[];
+        
+        messagesToSend.push({
+          role: 'user',
+          content: `[Фото ${tempSelectedImage.match(/\/(\d+)\.jpg$/)?.[1] || ''}] [${preloadedImages.find(img => img.url === tempSelectedImage)?.prompt || 'Пользователь отправил изображение'}]${priceInfo} [модель отправила фото]`
         });
-      }
 
-      // Получаем данные о существующем разговоре с Grok, если они есть
-      const conversationDetails = userConversations[selectedUser];
-      
-      const grokResponse = await generateGrokResponse(
-        messagesToSend,
-        conversationDetails
-      );
-
-      // Сохраняем информацию о разговоре для будущих сообщений
-      setUserConversations(prev => ({
-        ...prev,
-        [selectedUser]: {
-          conversationId: grokResponse.conversation_id,
-          parentResponseId: grokResponse.parent_response_id,
-          chatLink: grokResponse.chat_link
+        // Если это первое сообщение в чате, добавляем системный промпт
+        if (chatHistory.length === 0) {
+          messagesToSend.unshift({
+            role: 'system',
+            content: userPrompts[selectedUser]
+          });
         }
-      }));
 
-      if (grokResponse.error) {
+        // Получаем данные о существующем разговоре с Grok, если они есть
+        const conversationDetails = userConversations[selectedUser];
+        
+        const grokResponse = await generateGrokResponse(
+          messagesToSend,
+          conversationDetails
+        );
+
+        // Сохраняем информацию о разговоре для будущих сообщений
+        setUserConversations(prev => ({
+          ...prev,
+          [selectedUser]: {
+            conversationId: grokResponse.conversation_id,
+            parentResponseId: grokResponse.parent_response_id,
+            chatLink: grokResponse.chat_link
+          }
+        }));
+
+        if (grokResponse.error) {
+          const errorMessage = {
+            id: `error-${Date.now()}`,
+            sender: selectedUser,
+            content: `Ошибка: ${grokResponse.error}`,
+            time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true }),
+            isOwn: false,
+            isRead: false,
+            error: true,
+            errorDetails: grokResponse.error
+          };
+
+          setChatHistories(prev => ({
+            ...prev,
+            [selectedUser]: [...prev[selectedUser], errorMessage]
+          }));
+        } else {
+          // Имитируем печатание ответа перед его отображением
+          await simulateTypingDelay(selectedUser);
+          
+          // Сохраняем ответ ассистента в чат
+          const assistantChatMessage: SupabaseChatMessage = {
+            content: grokResponse.response,
+            time: new Date().toISOString(),
+            isOwn: false,
+            isRead: false
+          };
+
+          await addMessageToTestSession(
+            currentTestSessionId,
+            chatNumber as 1 | 2 | 3 | 4,
+            assistantChatMessage
+          );
+
+          const assistantMessage = {
+            id: `assistant-${Date.now()}`,
+            sender: selectedUser,
+            content: grokResponse.response,
+            time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true }),
+            isOwn: false,
+            isRead: false
+          };
+
+          setChatHistories(prev => ({
+            ...prev,
+            [selectedUser]: [...prev[selectedUser], assistantMessage]
+          }));
+        }
+
+        setUserStatus(prev => ({
+          ...prev,
+          [selectedUser]: {
+            ...prev[selectedUser],
+            isTyping: false,
+            lastMessageId: `assistant-${Date.now()}`
+          }
+        }));
+      } catch (error) {
+        console.error('Error in sending photo message:', error);
+        
         const errorMessage = {
           id: `error-${Date.now()}`,
           sender: selectedUser,
-          content: `Ошибка: ${grokResponse.error}`,
+          content: 'Произошла ошибка при отправке фото. Пожалуйста, попробуйте еще раз.',
           time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true }),
           isOwn: false,
           isRead: false,
-          error: true,
-          errorDetails: grokResponse.error
+          error: true
         };
 
         setChatHistories(prev => ({
           ...prev,
           [selectedUser]: [...prev[selectedUser], errorMessage]
         }));
-      } else {
-        // Имитируем печатание ответа перед его отображением
-        await simulateTypingDelay(selectedUser);
-        
-        // Сохраняем ответ ассистента в чат
-        const assistantChatMessage: SupabaseChatMessage = {
-          content: grokResponse.response,
-          time: new Date().toISOString(),
-          isOwn: false,
-          isRead: false
-        };
-
-        await addMessageToTestSession(
-          currentTestSessionId,
-          chatNumber as 1 | 2 | 3 | 4,
-          assistantChatMessage
-        );
-
-        const assistantMessage = {
-          id: `assistant-${Date.now()}`,
-          sender: selectedUser,
-          content: grokResponse.response,
-          time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true }),
-          isOwn: false,
-          isRead: false
-        };
-
-        setChatHistories(prev => ({
-          ...prev,
-          [selectedUser]: [...prev[selectedUser], assistantMessage]
-        }));
+      } finally {
+        setLoadingStates(prev => ({ ...prev, [selectedUser]: false }));
       }
+    };
 
-      setUserStatus(prev => ({
-        ...prev,
-        [selectedUser]: {
-          ...prev[selectedUser],
-          isTyping: false,
-          lastMessageId: `assistant-${Date.now()}`
-        }
-      }));
-    } catch (error) {
-      console.error('Error in handleSendMessage:', error);
-      
-      const errorMessage = {
-        id: `error-${Date.now()}`,
-        sender: selectedUser,
-        content: 'Произошла ошибка при отправке сообщения. Пожалуйста, попробуйте еще раз.',
-        time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true }),
-        isOwn: false,
-        isRead: false,
-        error: true
-      };
+    // Запускаем асинхронную отправку фото
+    sendPhotoMessage();
+  };
 
-      setChatHistories(prev => ({
-        ...prev,
-        [selectedUser]: [...prev[selectedUser], errorMessage]
-      }));
-    } finally {
-      setLoadingStates(prev => ({ ...prev, [selectedUser]: false }));
-    }
+  // Функция для отмены выбора изображения
+  const cancelImageSelection = () => {
+    setTempSelectedImage(null); // Очищаем временное изображение
+    setSelectedPrice('FREE'); // Сбрасываем цену
+    setShowPriceModal(false); // Закрываем модальное окно
+  };
+
+  const handleRemoveImage = () => {
+    setSelectedImage(null);
+    setSelectedPrice('FREE'); // Сбрасываем цену на FREE
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -1465,6 +1169,251 @@ function Chat() {
     }
   };
 
+  // Функция для отправки обычных текстовых сообщений
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!message.trim() && !selectedImage) return;
+
+    const candidateData = JSON.parse(sessionStorage.getItem('candidateData') || '{}');
+    const currentTestSessionId = sessionStorage.getItem('currentTestSessionId');
+
+    if (!candidateData.userId || !currentTestSessionId) {
+      console.error('Missing user data or test session');
+      return;
+    }
+
+    let messageContent = message;
+    let imageInfo = null;
+
+    if (selectedImage) {
+      const imageNumber = selectedImage.match(/\/(\d+)\.jpg$/)?.[1] || '';
+      const imagePrompt = preloadedImages.find(img => img.url === selectedImage)?.prompt || '';
+      const priceInfo = selectedPrice ? ` [Цена: ${selectedPrice}]` : '';
+      
+      imageInfo = {
+        url: selectedImage,
+        price: selectedPrice
+      };
+      
+      messageContent = `[Фото ${imageNumber}] [${imagePrompt}]${priceInfo}`;
+    }
+
+    const newMessage = {
+      id: `user-${Date.now()}`,
+      sender: 'You',
+      content: messageContent,
+      time: new Date().toLocaleTimeString(),
+      isOwn: true,
+      isRead: true,
+      ...(imageInfo && { imageUrl: imageInfo.url, price: imageInfo.price })
+    };
+
+    setChatHistories(prev => ({
+      ...prev,
+      [selectedUser]: [...prev[selectedUser], newMessage]
+    }));
+
+    setMessage('');
+    setSelectedImage(null);
+    setSelectedPrice('FREE');
+    setLoadingStates(prev => ({ ...prev, [selectedUser]: true }));
+
+    try {
+      const chatNumber = users.findIndex(user => user.name === selectedUser) + 1;
+      
+      if (chatNumber < 1 || chatNumber > 4) {
+        throw new Error('Invalid chat number');
+      }
+
+      const chatMessage = {
+        content: messageContent,
+        time: new Date().toISOString(),
+        isOwn: true,
+        isRead: true
+      };
+
+      await addMessageToTestSession(
+        currentTestSessionId,
+        chatNumber as 1 | 2 | 3 | 4,
+        chatMessage
+      );
+
+      const chatHistory = chatHistories[selectedUser];
+      const messagesToSend: { role: 'user' | 'assistant' | 'system', content: string }[] = chatHistory.slice(0, -1).map(msg => ({
+        role: msg.isOwn ? 'user' : 'assistant',
+        content: msg.content
+      }));
+
+      messagesToSend.push({
+        role: 'user',
+        content: messageContent
+      });
+
+      if (chatHistory.length === 1) {
+        messagesToSend.unshift({
+          role: 'system',
+          content: userPrompts[selectedUser]
+        });
+      }
+
+      const conversationDetails = userConversations[selectedUser];
+      const grokResponse = await generateGrokResponse(messagesToSend, conversationDetails);
+
+      if (grokResponse.error) {
+        const errorMessage = {
+          id: `error-${Date.now()}`,
+          sender: selectedUser,
+          content: `Ошибка: ${grokResponse.error}`,
+          time: new Date().toLocaleTimeString(),
+          isOwn: false,
+          isRead: false,
+          error: true
+        };
+
+        setChatHistories(prev => ({
+          ...prev,
+          [selectedUser]: [...prev[selectedUser], errorMessage]
+        }));
+      } else {
+        setUserConversations(prev => ({
+          ...prev,
+          [selectedUser]: {
+            conversationId: grokResponse.conversation_id,
+            parentResponseId: grokResponse.parent_response_id,
+            chatLink: grokResponse.chat_link
+          }
+        }));
+
+        await simulateTypingDelay(selectedUser);
+
+        const assistantMessage = {
+          id: `assistant-${Date.now()}`,
+          sender: selectedUser,
+          content: grokResponse.response,
+          time: new Date().toLocaleTimeString(),
+          isOwn: false,
+          isRead: false
+        };
+
+        await addMessageToTestSession(
+          currentTestSessionId,
+          chatNumber as 1 | 2 | 3 | 4,
+          {
+            content: grokResponse.response,
+            time: new Date().toISOString(),
+            isOwn: false,
+            isRead: false
+          }
+        );
+
+        setChatHistories(prev => ({
+          ...prev,
+          [selectedUser]: [...prev[selectedUser], assistantMessage]
+        }));
+
+        setUserStatus(prev => ({
+          ...prev,
+          [selectedUser]: {
+            ...prev[selectedUser],
+            isTyping: false,
+            lastMessageId: assistantMessage.id
+          }
+        }));
+      }
+    } catch (error) {
+      console.error('Error sending message:', error);
+      const errorMessage = {
+        id: `error-${Date.now()}`,
+        sender: selectedUser,
+        content: 'Произошла ошибка при отправке сообщения. Пожалуйста, попробуйте еще раз.',
+        time: new Date().toLocaleTimeString(),
+        isOwn: false,
+        isRead: false,
+        error: true
+      };
+
+      setChatHistories(prev => ({
+        ...prev,
+        [selectedUser]: [...prev[selectedUser], errorMessage]
+      }));
+    } finally {
+      setLoadingStates(prev => ({ ...prev, [selectedUser]: false }));
+    }
+  };
+
+  // Функция для повторной отправки сообщения в случае ошибки
+  const handleRetry = (msg: Message) => {
+    if (!msg.error) return;
+    
+    // Находим сообщение перед сообщением об ошибке
+    const messageIndex = chatHistories[selectedUser].findIndex(m => m.id === msg.id);
+    if (messageIndex <= 0) return;
+    
+    const prevMessage = chatHistories[selectedUser][messageIndex - 1];
+    if (!prevMessage.isOwn) return;
+    
+    // Удаляем сообщение об ошибке из истории
+    setChatHistories(prev => ({
+      ...prev,
+      [selectedUser]: prev[selectedUser].filter(m => m.id !== msg.id)
+    }));
+    
+    // Устанавливаем сообщение для повторной отправки
+    setRetryingMessage(prevMessage);
+    
+    // Если сообщение содержит изображение, восстанавливаем его
+    if (prevMessage.imageUrl) {
+      setSelectedImage(prevMessage.imageUrl);
+      setSelectedPrice(prevMessage.price || 'FREE');
+      setMessage('');
+    } else {
+      setMessage(prevMessage.content);
+      setSelectedImage(null);
+      setSelectedPrice('FREE');
+    }
+  };
+
+  // Обработчик для загрузки файлов
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    setUploadingImage(true);
+    
+    // Здесь должна быть логика загрузки файла
+    // Для упрощения, заглушка, которая создает локальный URL
+    setTimeout(() => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        if (event.target?.result) {
+          const newImage: CustomImage = {
+            id: `custom-${Date.now()}`,
+            url: event.target.result as string,
+            thumbnail: event.target.result as string,
+            description: file.name,
+            prompt: 'Пользовательское изображение'
+          };
+          
+          setCustomImages(prev => [...prev, newImage]);
+          setUploadingImage(false);
+        }
+      };
+      reader.readAsDataURL(file);
+    }, 1500);
+  };
+
+  // Обработчик для клика по кнопке загрузки
+  const handleUploadClick = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  };
+
+  // Обработчик для удаления пользовательского изображения
+  const handleDeleteCustomImage = (imageId: string) => {
+    setCustomImages(prev => prev.filter(img => img.id !== imageId));
+  };
+
   return (
     <div className="min-h-screen bg-[#1a1a1a] text-gray-100">
       {/* Окно поздравления */}
@@ -1637,6 +1586,9 @@ function Chat() {
           >
             {chatHistories[selectedUser].map((msg) => {
               const imagePrompt = msg.content.match(/\[Фото \d+\] \[(.*?)\]/)?.[1];
+              const priceMatch = msg.content.match(/\[Цена: (.*?)\]/);
+              const price = msg.price || (priceMatch ? priceMatch[1] : null);
+              
               return (
                 <div
                   key={msg.id}
@@ -1679,14 +1631,22 @@ function Chat() {
                         <p>{imagePrompt ? '' : msg.content}</p>
                         {(msg.imageUrl || imagePrompt) && (
                           <div className="mt-1 rounded-md overflow-hidden">
-                            <img 
-                              src={msg.imageUrl || `/foto/${msg.content.match(/\[Фото (\d+)\]/)?.[1]}.jpg`} 
-                              alt="Отправленное изображение" 
-                              className="max-w-[200px] h-auto rounded-md border border-[#3d3d3d]"
-                            />
+                            <div className="relative">
+                              <img 
+                                src={msg.imageUrl || `/foto/${msg.content.match(/\[Фото (\d+)\]/)?.[1]}.jpg`} 
+                                alt="Отправленное изображение" 
+                                className="max-w-[200px] h-auto rounded-md border border-[#3d3d3d]"
+                              />
+                            </div>
                           </div>
                         )}
                         <div className="flex items-center justify-end gap-2 mt-1">
+                          {price && price !== 'FREE' && (
+                            <>
+                              <span className="text-xs text-gray-300">paid</span>
+                              <CheckCheck className="w-4 h-4 text-gray-500" />
+                            </>
+                          )}
                           <p className="text-xs text-gray-300">{msg.time}</p>
                           {msg.isOwn && (
                             msg.isRead ? (
@@ -1704,21 +1664,72 @@ function Chat() {
             })}
           </div>
 
-          {/* Image preview */}
+          {/* Модальное окно для ввода цены */}
+          {showPriceModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70">
+              <div className="bg-[#2d2d2d] rounded-lg w-80 overflow-hidden shadow-xl border border-[#3d3d3d]">
+                <div className="p-4 bg-[#1a1a1a] border-b border-[#3d3d3d]">
+                  <h2 className="text-lg font-semibold text-gray-100 text-center">POST PRICE</h2>
+                </div>
+                <div className="p-4">
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-300 mb-1">Price</label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <span className="text-pink-500">$</span>
+                      </div>
+                      <input
+                        type="text"
+                        value={selectedPrice}
+                        onChange={(e) => setSelectedPrice(e.target.value)}
+                        className="pl-8 pr-4 py-2 w-full bg-[#1a1a1a] border border-[#3d3d3d] rounded-md focus:outline-none focus:ring-2 focus:ring-pink-500 text-white"
+                      />
+                    </div>
+                    <p className="text-xs text-gray-400 mt-1">Minimum $3 USD or free</p>
+                  </div>
+                  <div className="flex justify-between mt-6">
+                    <button
+                      onClick={cancelImageSelection}
+                      className="px-4 py-2 text-gray-300 font-semibold hover:text-white"
+                    >
+                      CANCEL
+                    </button>
+                    <button
+                      onClick={confirmImageSelection}
+                      className="px-4 py-2 bg-gradient-to-r from-pink-500 to-purple-500 text-white font-semibold rounded-md hover:opacity-90"
+                    >
+                      SAVE
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Image preview - удаляем поле для ввода цены, так как теперь используем модальное окно */}
           {selectedImage && (
-            <div className="p-1 border-t border-[#3d3d3d] bg-[#2d2d2d]">
-              <div className="relative inline-block">
-                <img 
-                  src={selectedImage} 
-                  alt="Preview" 
-                  className="h-16 w-auto rounded-md border border-[#3d3d3d]" 
-                />
-                <button 
-                  onClick={handleRemoveImage}
-                  className="absolute -top-1 -right-1 bg-red-500 rounded-full p-0.5"
-                >
-                  <X className="w-3 h-3" />
-                </button>
+            <div className="p-2 border-t border-[#3d3d3d] bg-[#2d2d2d]">
+              <div className="flex items-center gap-3">
+                <div className="relative inline-block">
+                  <img 
+                    src={selectedImage} 
+                    alt="Preview" 
+                    className="h-16 w-auto rounded-md border border-[#3d3d3d]" 
+                  />
+                  <button 
+                    onClick={handleRemoveImage}
+                    className="absolute -top-1 -right-1 bg-red-500 rounded-full p-0.5"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+                
+                {/* Отображаем выбранную цену рядом с превью */}
+                <div className="flex-1">
+                  <span className="bg-pink-500 text-white px-2 py-1 rounded-full text-xs font-bold">
+                    {selectedPrice}
+                  </span>
+                </div>
               </div>
             </div>
           )}
