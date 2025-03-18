@@ -1055,8 +1055,21 @@ function Chat() {
     }
   };
 
+  // Отслеживание состояния анализа для каждой сессии
+  const activeAnalysisSessions = new Set<string>();
+
   // Обработчик для анализа диалогов и сохранения результатов
   const analyzeDialogsAndSaveResults = async (sessionId: string) => {
+    // Проверяем, не выполняется ли уже анализ для этой сессии
+    if (activeAnalysisSessions.has(sessionId)) {
+      console.log(`Analysis already in progress for session ${sessionId}, skipping duplicate request`);
+      return;
+    }
+
+    // Добавляем сессию в список активных
+    activeAnalysisSessions.add(sessionId);
+    console.log(`Starting analysis for session ${sessionId}. Total active analyses: ${activeAnalysisSessions.size}`);
+
     try {
       console.log('Starting dialog analysis for session:', sessionId);
       
@@ -1166,6 +1179,10 @@ function Chat() {
     } finally {
       // В любом случае завершаем расчет результатов
       setCalculatingResults(false);
+      
+      // Удаляем сессию из списка активных
+      activeAnalysisSessions.delete(sessionId);
+      console.log(`Completed analysis for session ${sessionId}. Remaining active analyses: ${activeAnalysisSessions.size}`);
     }
   };
 

@@ -10,6 +10,7 @@ export default defineConfig({
   },
   publicDir: 'public',
   server: {
+    host: true,
     proxy: {
       '/api': {
         target: 'https://grok.ru.tuna.am',

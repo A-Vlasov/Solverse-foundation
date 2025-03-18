@@ -175,172 +175,215 @@ const retryFetch = async (url: string, options: RequestInit, maxRetries: number 
   throw lastError || new Error('All retry attempts failed');
 };
 
+// Отслеживание активных запросов анализа для исключения дублирования
+const activeAnalysisRequests = new Map<string, Promise<any>>();
+
 /**
  * Отправляет промпт на анализ в Grok и получает результат
  */
 export const analyzeDialogs = async (prompt: string): Promise<any> => {
+  // Создаем уникальный ключ для запроса на основе первых 100 и последних 100 символов промпта
+  // Это достаточно уникально, но при этом одинаковые запросы будут дедуплицированы
+  const promptKey = `${prompt.slice(0, 100)}...${prompt.slice(-100)}`;
+  
+  // Проверяем, есть ли уже активный запрос с таким же ключом
+  if (activeAnalysisRequests.has(promptKey)) {
+    console.log('Duplicate analysis request detected, reusing existing request');
+    return activeAnalysisRequests.get(promptKey);
+  }
+
   try {
     console.log('Sending dialog analysis prompt to Grok, prompt length:', prompt.length);
     
-    const response = await fetch(`${API_BASE_URL}/chat/new`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ message: prompt })
-    });
+    // Создаем промис для текущего запроса и сохраняем его в Map
+    const analysisPromise = (async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/chat/new`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ message: prompt })
+        });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Server responded with error:', response.status, errorText);
-      throw new Error(`HTTP error! status: ${response.status}, details: ${errorText}`);
-    }
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('Server responded with error:', response.status, errorText);
+          throw new Error(`HTTP error! status: ${response.status}, details: ${errorText}`);
+        }
 
-    const data = await response.json();
-    console.log('Received analysis response from Grok API');
-    
-    // Парсим результат анализа
-    try {
-      if (typeof data.response === 'string') {
-        // Сначала пытаемся найти валидный JSON с помощью регулярных выражений
-        const jsonMatch = data.response.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          const jsonStr = jsonMatch[0];
-          try {
-            const analysisResult = JSON.parse(jsonStr);
-            return {
-              ...data,
-              analysisResult
-            };
-          } catch (jsonError) {
-            console.error('Error parsing extracted JSON:', jsonError);
-            // Дополнительная обработка - возможно, нужно нормализовать JSON
-            const cleanedJson = jsonStr
-              .replace(/\\"/g, '"')       // Замена экранированных кавычек
-              .replace(/\n/g, ' ')        // Удаление переносов строк
-              .replace(/\s+/g, ' ')       // Замена множественных пробелов одним
-              .replace(/,\s*}/g, '}')     // Удаление висячих запятых
-              .replace(/,\s*]/g, ']');    // Удаление висячих запятых в массивах
-            
-            try {
-              const cleanedResult = JSON.parse(cleanedJson);
-              console.log('Successfully parsed cleaned JSON');
-              return {
-                ...data,
-                analysisResult: cleanedResult
-              };
-            } catch (cleanedError) {
-              console.error('Error parsing cleaned JSON:', cleanedError);
-            }
-          }
-        }
+        const data = await response.json();
+        console.log('Received analysis response from Grok API');
         
-        // Если не удалось найти JSON, ищем ключевые метрики в тексте
-        const metrics: Record<string, number> = {};
-        const metricsRegex = /(\w+).*?score.*?(\d+(\.\d+)?)/gi;
-        let match;
-        while ((match = metricsRegex.exec(data.response)) !== null) {
-          const metricName = match[1].toLowerCase();
-          const score = parseFloat(match[2]);
-          if (!isNaN(score) && score >= 0 && score <= 5) {
-            metrics[metricName] = score;
-          }
-        }
-        
-        if (Object.keys(metrics).length > 0) {
-          console.log('Extracted metrics from text:', metrics);
-          // Формируем базовый результат на основе извлеченных метрик
-          const result: DialogAnalysisResult = {
-            dialog_analysis: {
-              metrics: {
-                engagement: { score: 0, verdict: "" },
-                charm_and_tone: { score: 0, verdict: "" },
-                creativity: { score: 0, verdict: "" },
-                adaptability: { score: 0, verdict: "" },
-                self_promotion: { score: 0, verdict: "" },
-                pricing_policy: { score: 0, verdict: "", strengths: [], improvements: [] }
-              },
-              overall_conclusion: "Анализ выполнен на основе извлеченных данных из текстового ответа."
-            }
-          };
-          
-          // Заполняем метрики
-          for (const [key, score] of Object.entries(metrics)) {
-            const verdict = `Оценка извлечена из текста ответа.`;
-            if (key.includes('engage')) {
-              result.dialog_analysis.metrics.engagement = { score, verdict };
-            } else if (key.includes('charm') || key.includes('tone')) {
-              result.dialog_analysis.metrics.charm_and_tone = { score, verdict };
-            } else if (key.includes('creativ')) {
-              result.dialog_analysis.metrics.creativity = { score, verdict };
-            } else if (key.includes('adapt')) {
-              result.dialog_analysis.metrics.adaptability = { score, verdict };
-            } else if (key.includes('promot') || key.includes('self')) {
-              result.dialog_analysis.metrics.self_promotion = { score, verdict };
-            } else if (key.includes('pric') || key.includes('policy')) {
-              result.dialog_analysis.metrics.pricing_policy = { 
-                score, 
-                verdict, 
-                strengths: ["Извлечено из текста"], 
-                improvements: ["Требуется детальный анализ"] 
-              };
-            }
-          }
-          
-          // Заполняем недостающие метрики средним значением
-          const metricNames = [
-            'engagement', 
-            'charm_and_tone', 
-            'creativity', 
-            'adaptability', 
-            'self_promotion',
-            'pricing_policy'
-          ] as const;
-          const defaultVerdict = "Недостаточно данных для оценки.";
-          const existingScores: number[] = [];
-          
-          for (const name of metricNames) {
-            if (result.dialog_analysis.metrics[name].score === 0) {
-              result.dialog_analysis.metrics[name] = { score: 0, verdict: defaultVerdict };
-            } else {
-              existingScores.push(result.dialog_analysis.metrics[name].score);
-            }
-          }
-          
-          // Для недостающих метрик используем среднее значение, если есть хотя бы одна метрика
-          if (existingScores.length > 0) {
-            const avgScore = existingScores.reduce((sum, score) => sum + score, 0) / existingScores.length;
-            for (const name of metricNames) {
-              if (result.dialog_analysis.metrics[name].score === 0) {
-                result.dialog_analysis.metrics[name].score = avgScore;
+        // Парсим результат анализа
+        try {
+          if (typeof data.response === 'string') {
+            // Сначала пытаемся найти валидный JSON с помощью регулярных выражений
+            const jsonMatch = data.response.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+              const jsonStr = jsonMatch[0];
+              try {
+                const analysisResult = JSON.parse(jsonStr);
+                return {
+                  ...data,
+                  analysisResult
+                };
+              } catch (jsonError) {
+                console.error('Error parsing extracted JSON:', jsonError);
+                // Дополнительная обработка - возможно, нужно нормализовать JSON
+                const cleanedJson = jsonStr
+                  .replace(/\\"/g, '"')       // Замена экранированных кавычек
+                  .replace(/\n/g, ' ')        // Удаление переносов строк
+                  .replace(/\s+/g, ' ')       // Замена множественных пробелов одним
+                  .replace(/,\s*}/g, '}')     // Удаление висячих запятых
+                  .replace(/,\s*]/g, ']');    // Удаление висячих запятых в массивах
+                
+                try {
+                  const cleanedResult = JSON.parse(cleanedJson);
+                  console.log('Successfully parsed cleaned JSON');
+                  return {
+                    ...data,
+                    analysisResult: cleanedResult
+                  };
+                } catch (cleanedError) {
+                  console.error('Error parsing cleaned JSON:', cleanedError);
+                }
               }
             }
+            
+            // Если не удалось найти JSON, ищем ключевые метрики в тексте
+            const metrics: Record<string, number> = {};
+            const metricsRegex = /(\w+).*?score.*?(\d+(\.\d+)?)/gi;
+            let match;
+            while ((match = metricsRegex.exec(data.response)) !== null) {
+              const metricName = match[1].toLowerCase();
+              const score = parseFloat(match[2]);
+              if (!isNaN(score) && score >= 0 && score <= 5) {
+                metrics[metricName] = score;
+              }
+            }
+            
+            if (Object.keys(metrics).length > 0) {
+              console.log('Extracted metrics from text:', metrics);
+              // Формируем базовый результат на основе извлеченных метрик
+              const result: DialogAnalysisResult = {
+                dialog_analysis: {
+                  metrics: {
+                    engagement: { score: 0, verdict: "" },
+                    charm_and_tone: { score: 0, verdict: "" },
+                    creativity: { score: 0, verdict: "" },
+                    adaptability: { score: 0, verdict: "" },
+                    self_promotion: { score: 0, verdict: "" },
+                    pricing_policy: { score: 0, verdict: "", strengths: [], improvements: [] }
+                  },
+                  overall_conclusion: "Анализ выполнен на основе извлеченных данных из текстового ответа."
+                }
+              };
+              
+              // Заполняем метрики
+              for (const [key, score] of Object.entries(metrics)) {
+                const verdict = `Оценка извлечена из текста ответа.`;
+                if (key.includes('engage')) {
+                  result.dialog_analysis.metrics.engagement = { score, verdict };
+                } else if (key.includes('charm') || key.includes('tone')) {
+                  result.dialog_analysis.metrics.charm_and_tone = { score, verdict };
+                } else if (key.includes('creativ')) {
+                  result.dialog_analysis.metrics.creativity = { score, verdict };
+                } else if (key.includes('adapt')) {
+                  result.dialog_analysis.metrics.adaptability = { score, verdict };
+                } else if (key.includes('promot') || key.includes('self')) {
+                  result.dialog_analysis.metrics.self_promotion = { score, verdict };
+                } else if (key.includes('pric') || key.includes('policy')) {
+                  result.dialog_analysis.metrics.pricing_policy = { 
+                    score, 
+                    verdict, 
+                    strengths: ["Извлечено из текста"], 
+                    improvements: ["Требуется детальный анализ"] 
+                  };
+                }
+              }
+              
+              // Заполняем недостающие метрики средним значением
+              const metricNames = [
+                'engagement', 
+                'charm_and_tone', 
+                'creativity', 
+                'adaptability', 
+                'self_promotion',
+                'pricing_policy'
+              ] as const;
+              const defaultVerdict = "Недостаточно данных для оценки.";
+              const existingScores: number[] = [];
+              
+              for (const name of metricNames) {
+                if (result.dialog_analysis.metrics[name].score === 0) {
+                  result.dialog_analysis.metrics[name] = { score: 0, verdict: defaultVerdict };
+                } else {
+                  existingScores.push(result.dialog_analysis.metrics[name].score);
+                }
+              }
+              
+              // Для недостающих метрик используем среднее значение, если есть хотя бы одна метрика
+              if (existingScores.length > 0) {
+                const avgScore = existingScores.reduce((sum, score) => sum + score, 0) / existingScores.length;
+                for (const name of metricNames) {
+                  if (result.dialog_analysis.metrics[name].score === 0) {
+                    result.dialog_analysis.metrics[name].score = avgScore;
+                  }
+                }
+              }
+              
+              return {
+                ...data,
+                analysisResult: result
+              };
+            }
           }
           
+          // Если не удалось извлечь JSON, возвращаем исходные данные с флагом
+          console.warn('Could not extract structured data from response');
           return {
             ...data,
-            analysisResult: result
+            parseError: true
+          };
+        } catch (parseError) {
+          console.error('Error parsing response:', parseError);
+          return {
+            ...data,
+            parseError: true,
+            error: parseError instanceof Error ? parseError.message : 'Error parsing response'
           };
         }
+      } catch (error) {
+        console.error('Error in analysis request:', error);
+        throw error;
+      } finally {
+        // Удаляем запрос из Map после завершения (успешного или с ошибкой)
+        setTimeout(() => {
+          activeAnalysisRequests.delete(promptKey);
+          console.log(`Removed analysis request from tracking: ${promptKey.substring(0, 20)}...`);
+        }, 1000); // Небольшая задержка перед удалением, чтобы избежать гонки условий
       }
-      
-      // Если не удалось извлечь JSON, возвращаем исходные данные с флагом
-      console.warn('Could not extract structured data from response');
-      return {
-        ...data,
-        noStructuredData: true
-      };
-    } catch (parseError) {
-      console.error('Error parsing analysis result:', parseError);
-      return {
-        ...data,
-        parseError: true
-      };
-    }
+    })();
+    
+    // Сохраняем промис в Map для отслеживания
+    activeAnalysisRequests.set(promptKey, analysisPromise);
+    console.log(`Added analysis request to tracking. Active requests: ${activeAnalysisRequests.size}`);
+    
+    // Возвращаем промис
+    return analysisPromise;
   } catch (error) {
-    console.error('Error analyzing dialogs:', error);
+    console.error('Error in analyzeDialogs:', error);
+    
+    // Удаляем запрос из Map в случае ошибки
+    activeAnalysisRequests.delete(promptKey);
+    
+    // Рекомендуется всегда возвращать объект одинаковой структуры
     return {
-      error: error instanceof Error ? error.message : 'Unknown error occurred'
+      conversation_id: '',
+      parent_response_id: '',
+      response: '',
+      error: error instanceof Error ? error.message : 'Unknown error occurred in analyzeDialogs'
     };
   }
 };
