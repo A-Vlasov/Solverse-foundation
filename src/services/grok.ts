@@ -11,7 +11,7 @@ interface GrokResponse {
 }
 
 // Use environment variables for API URLs
-const API_BASE_URL = 'https://grok.ru.tuna.am/api';
+const API_BASE_URL = 'http://145.223.85.248:3001/api';
 
 /**
  * Sends a message to Grok API to start a new conversation

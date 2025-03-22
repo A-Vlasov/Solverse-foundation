@@ -40,7 +40,6 @@ interface Message {
   imageUrl?: string;
   price?: string; // Добавляем поле для цены
   bought?: boolean; // Добавляем поле для статуса покупки фото
-  imageComment?: string; // Добавляем поле для комментария к фото
 }
 
 interface ChatHistory {
@@ -274,9 +273,9 @@ function Chat() {
   const [testSessionId, setTestSessionId] = useState<string | null>(null);
   const [showPromptModal, setShowPromptModal] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
-  const [selectedPrice, setSelectedPrice] = useState<string>('FREE');
-  const [showPriceModal, setShowPriceModal] = useState<boolean>(false);
-  const [tempSelectedImage, setTempSelectedImage] = useState<string | null>(null);
+  const [selectedPrice, setSelectedPrice] = useState<string>('FREE'); // Изначальное значение FREE
+  const [showPriceModal, setShowPriceModal] = useState(false); // Состояние для отображения модального окна цены
+  const [tempSelectedImage, setTempSelectedImage] = useState<string | null>(null); // Временное хранение выбранного изображения
   const [customImages, setCustomImages] = useState<CustomImage[]>([]);
   const [activeTab, setActiveTab] = useState<'preloaded' | 'custom'>('preloaded');
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -305,9 +304,6 @@ function Chat() {
   
   // Добавляем состояние для модального окна промпта
   const [isPromptModalOpen, setIsPromptModalOpen] = useState(false);
-  
-  const [imageComment, setImageComment] = useState<string>(''); // Добавляем состояние для комментария
-  const [selectedImageComment, setSelectedImageComment] = useState<string>(''); // Комментарий для выбранного изображения в предпросмотре
   
   const users = [
     { name: 'Marcus', status: 'Online', lastMessage: 'Страстный клиент' },
@@ -890,11 +886,11 @@ function Chat() {
     setShowImageGallery(prev => !prev);
   };
 
-  // Модифицируем функцию selectImage для открытия модального окна с ценой
+  // Модифицируем функцию selectImage для открытия модального окна с ценой и комментарием
   const selectImage = (imageUrl: string) => {
     setTempSelectedImage(imageUrl); // Сохраняем выбранное изображение во временную переменную
     setSelectedPrice('FREE'); // Устанавливаем начальное значение FREE
-    setImageComment(''); // Сбрасываем комментарий
+    setMessage(''); // Очищаем текстовое поле для комментария
     setShowPriceModal(true); // Показываем модальное окно для ввода цены
     setShowImageGallery(false); // Закрываем галерею изображений
   };
@@ -923,19 +919,22 @@ function Chat() {
       return;
     }
 
-    // Формируем контент сообщения с учетом ценника
+    // Получаем комментарий из поля ввода
+    const comment = message.trim();
+    
+    // Формируем контент сообщения с учетом ценника и комментария
     const priceInfo = selectedPrice ? ` [Цена: ${selectedPrice}]` : '';
+    const commentInfo = comment ? ` [Комментарий: ${comment}]` : '';
 
     const newMessage = {
       id: `user-${Date.now()}`,
       sender: 'You',
-      content: '',
+      content: comment, // Сохраняем комментарий в поле content
       time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true }),
       isOwn: true,
       isRead: true,
       imageUrl: tempSelectedImage,
-      price: selectedPrice,
-      imageComment: imageComment // Добавляем комментарий к изображению
+      price: selectedPrice
     };
 
     setChatHistories(prev => ({
@@ -943,10 +942,15 @@ function Chat() {
       [selectedUser]: [...prev[selectedUser], newMessage]
     }));
     
-    // Сбрасываем временное изображение и цену
+    // Сохраняем переменные для использования в sendPhotoMessage
+    const localTempSelectedImage = tempSelectedImage;
+    const localComment = comment;
+    const localPriceInfo = priceInfo;
+    
+    // Сбрасываем временное изображение, цену и текст сообщения
     setTempSelectedImage(null);
     setSelectedPrice('FREE');
-    setImageComment(''); // Сбрасываем комментарий
+    setMessage(''); // Очищаем поле сообщения после отправки
     
     setLoadingStates(prev => ({ ...prev, [selectedUser]: true }));
 
@@ -958,12 +962,9 @@ function Chat() {
         throw new Error('Invalid chat number');
       }
 
-      // Формируем комментарий к фото, если он есть
-      const commentInfo = imageComment ? ` [Комментарий: ${imageComment}]` : '';
-
       // Сохраняем сообщение пользователя в чат
       const chatMessage: SupabaseChatMessage = {
-          content: `[Фото ${tempSelectedImage.match(/\/(\d+)\.jpg$/)?.[1] || ''}] [${preloadedImages.find(img => img.url === tempSelectedImage)?.prompt || 'Пользователь отправил изображение'}]${priceInfo}${commentInfo} [модель отправила фото]`,
+        content: `[Фото ${localTempSelectedImage.match(/\/(\d+)\.jpg$/)?.[1] || ''}] [${preloadedImages.find(img => img.url === localTempSelectedImage)?.prompt || 'Пользователь отправил изображение'}]${localPriceInfo}${localComment ? ` [Комментарий: ${localComment}]` : ''} [модель отправила фото]`,
         time: new Date().toISOString(),
         isOwn: true,
         isRead: true
@@ -988,7 +989,7 @@ function Chat() {
       
       messagesToSend.push({
         role: 'user',
-          content: `[Фото ${tempSelectedImage.match(/\/(\d+)\.jpg$/)?.[1] || ''}] [${preloadedImages.find(img => img.url === tempSelectedImage)?.prompt || 'Пользователь отправил изображение'}]${priceInfo}${commentInfo} [модель отправила фото]`
+        content: `[Фото ${localTempSelectedImage.match(/\/(\d+)\.jpg$/)?.[1] || ''}] [${preloadedImages.find(img => img.url === localTempSelectedImage)?.prompt || 'Пользователь отправил изображение'}]${localPriceInfo} [модель отправила фото]`
       });
 
       // Если это первое сообщение в чате, добавляем системный промпт
@@ -1102,16 +1103,14 @@ function Chat() {
 
   // Функция для отмены выбора изображения
   const cancelImageSelection = () => {
-    setTempSelectedImage(null); // Очищаем временное изображение
-    setSelectedPrice('FREE'); // Сбрасываем цену
-    setImageComment(''); // Сбрасываем комментарий
-    setShowPriceModal(false); // Закрываем модальное окно
+    setShowPriceModal(false);
+    setTempSelectedImage(null);
+    setMessage('');
   };
 
   const handleRemoveImage = () => {
     setSelectedImage(null);
     setSelectedPrice('FREE'); // Сбрасываем цену на FREE
-    setSelectedImageComment(''); // Сбрасываем комментарий
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -1397,39 +1396,7 @@ function Chat() {
   // Функция для отправки обычных текстовых сообщений
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Проверяем, есть ли выбранное изображение
-    if (selectedImage) {
-      // Сохраняем цену и комментарий для выбранного изображения
-      const price = selectedPrice || 'FREE';
-      const comment = selectedImageComment || '';
-      
-      // Создаем объект сообщения с изображением и ценой
-      const newImageMessage: Message = {
-        id: `user-${Date.now()}`,
-        sender: 'You',
-        content: '',
-        time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true }),
-        isOwn: true,
-        isRead: true,
-        imageUrl: selectedImage,
-        price: price,
-        imageComment: comment // Добавляем комментарий
-      };
-      
-      // Добавляем сообщение в историю чата
-      setChatHistories(prev => ({
-        ...prev,
-        [selectedUser]: [...prev[selectedUser], newImageMessage]
-      }));
-      
-      // Сбрасываем выбранное изображение и цену
-      setSelectedImage(null);
-      setSelectedPrice('FREE');
-      setSelectedImageComment(''); // Сбрасываем комментарий
-    }
-
-    if (!message.trim()) return;
+    if (!message.trim() && !selectedImage) return;
 
     const candidateData = JSON.parse(sessionStorage.getItem('candidateData') || '{}');
     const currentTestSessionId = sessionStorage.getItem('currentTestSessionId');
@@ -1446,15 +1413,13 @@ function Chat() {
       const imageNumber = selectedImage.match(/\/(\d+)\.jpg$/)?.[1] || '';
       const imagePrompt = preloadedImages.find(img => img.url === selectedImage)?.prompt || '';
       const priceInfo = selectedPrice ? ` [Цена: ${selectedPrice}]` : '';
-      const commentInfo = selectedImageComment ? ` [Комментарий: ${selectedImageComment}]` : '';
       
       imageInfo = {
         url: selectedImage,
-        price: selectedPrice,
-        comment: selectedImageComment
+        price: selectedPrice
       };
       
-      messageContent = `[Фото ${imageNumber}] [${imagePrompt}]${priceInfo}${commentInfo}`;
+      messageContent = `[Фото ${imageNumber}] [${imagePrompt}]${priceInfo}`;
     }
 
     const newMessage = {
@@ -1464,11 +1429,7 @@ function Chat() {
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       isOwn: true,
       isRead: true,
-      ...(imageInfo && { 
-        imageUrl: imageInfo.url, 
-        price: imageInfo.price,
-        imageComment: imageInfo.comment 
-      })
+      ...(imageInfo && { imageUrl: imageInfo.url, price: imageInfo.price })
     };
 
     setChatHistories(prev => ({
@@ -2024,21 +1985,15 @@ function Chat() {
                                 src={msg.imageUrl || `/foto/${msg.content.match(/\[Фото (\d+)\]/)?.[1]}.jpg`} 
                             alt="Отправленное изображение" 
                                 className="max-w-[200px] h-auto rounded-md border border-[#3d3d3d]"
-                              />
+                          />
                             </div>
-                            {/* Отображаем комментарий к фото, если он есть */}
-                            {msg.imageComment && (
-                              <div className="mt-1 text-sm text-white bg-transparent p-1 rounded-b-md">
-                                {msg.imageComment}
-                              </div>
-                            )}
                         </div>
                       )}
                       <div className="flex items-center justify-end gap-2 mt-1">
                           {price && price !== 'FREE' && (
                             <>
                               <span className="text-xs text-white font-bold flex items-center gap-1">
-                                ${price} • {msg.bought ? 'purchased' : 'pending'}
+                                {msg.bought ? 'purchased' : 'pending'}
                                 {msg.bought ? (
                                   <CheckCheck className="w-3 h-3 text-green-500" />
                                 ) : (
@@ -2064,97 +2019,52 @@ function Chat() {
             })}
           </div>
 
-          {/* Price modal window */}
-          {showPriceModal && tempSelectedImage && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-              <div className="bg-[#2d2d2d] p-6 rounded-lg shadow-lg max-w-md w-full">
-                <h3 className="text-xl font-bold text-white mb-4">Установка цены фото</h3>
+          {/* Модальное окно для выбора цены и комментария */}
+          {showPriceModal && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-40">
+              <div className="bg-white rounded-lg p-6 max-w-md w-full">
+                <h3 className="text-xl font-semibold mb-4">Выберите цену и добавьте комментарий</h3>
                 
-                <div className="mb-6">
-                  <img 
-                    src={tempSelectedImage} 
-                    alt="Selected" 
-                    className="w-full h-48 object-contain bg-black rounded-md mb-4" 
-                  />
-                  
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-400 mb-1">
-                        Цена фото
-                      </label>
-                      <div className="flex flex-wrap gap-2">
-                        {['FREE', '3.99', '7.99', '9.99', '14.99', '19.99'].map(price => (
-                          <button
-                            key={price}
-                            onClick={() => setSelectedPrice(price)}
-                            className={`px-3 py-1.5 rounded text-sm ${
-                              selectedPrice === price
-                                ? 'bg-pink-500 text-white'
-                                : 'bg-[#1a1a1a] text-gray-400 hover:bg-[#3d3d3d]'
-                            }`}
-                          >
-                            {price}
-                          </button>
-                        ))}
-                      </div>
-                      
-                      {/* Поле для ручного ввода цены */}
-                      <div className="mt-3">
-                        <label className="block text-sm font-medium text-gray-400 mb-1">
-                          Ручной ввод цены (1-100$)
-                        </label>
-                        <div className="flex items-center">
-                          <input
-                            type="number"
-                            min="1"
-                            max="100"
-                            placeholder="Введите цену"
-                            value={selectedPrice !== 'FREE' && parseInt(selectedPrice) <= 100 ? selectedPrice : ''}
-                            onChange={(e) => {
-                              const value = e.target.value;
-                              if (value === '') {
-                                setSelectedPrice('FREE');
-                              } else {
-                                const numValue = parseInt(value);
-                                if (!isNaN(numValue) && numValue >= 1 && numValue <= 100) {
-                                  setSelectedPrice(numValue.toString());
-                                }
-                              }
-                            }}
-                            className="w-full bg-[#1a1a1a] border border-[#3d3d3d] rounded-md px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-pink-500"
-                          />
-                          <span className="ml-2 text-white">$</span>
-                        </div>
-                      </div>
-          </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-400 mb-1">
-                        Комментарий к фото
-                      </label>
-                      <textarea
-                        value={imageComment}
-                        onChange={(e) => setImageComment(e.target.value)}
-                        placeholder="Напишите комментарий к фото..."
-                        className="w-full bg-[#1a1a1a] border border-[#3d3d3d] rounded-md px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-pink-500"
-                        rows={3}
-                      />
-                    </div>
+                <div className="mb-4">
+                  <h4 className="font-medium mb-2">Цена:</h4>
+                  <div className="grid grid-cols-3 gap-2 mb-4">
+                    {['FREE', '$5', '$10', '$15', '$20', '$30'].map(price => (
+                      <button
+                        key={price}
+                        className={`py-2 px-4 border rounded ${selectedPrice === price ? 'bg-blue-500 text-white' : 'bg-gray-100'}`}
+                        onClick={() => setSelectedPrice(price)}
+                      >
+                        {price}
+                      </button>
+                    ))}
                   </div>
+                  
+                  <h4 className="font-medium mb-2">Комментарий к фото:</h4>
+                  <textarea
+                    className="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Добавьте комментарий к фото (необязательно)"
+                    value={message}
+                    onChange={e => setMessage(e.target.value)}
+                    rows={3}
+                  />
                 </div>
                 
-                <div className="flex justify-end space-x-3">
+                <div className="flex justify-end space-x-2">
                   <button
-                    onClick={cancelImageSelection}
-                    className="px-4 py-2 bg-[#3d3d3d] text-white rounded-md hover:bg-[#4d4d4d]"
+                    className="py-2 px-4 border rounded bg-gray-100"
+                    onClick={() => {
+                      setShowPriceModal(false);
+                      setTempSelectedImage(null);
+                      setMessage('');
+                    }}
                   >
-                    CANCEL
+                    Отмена
                   </button>
                   <button
+                    className="py-2 px-4 border rounded bg-blue-500 text-white"
                     onClick={confirmImageSelection}
-                    className="px-4 py-2 bg-gradient-to-r from-pink-500 to-purple-500 text-white font-semibold rounded-md hover:opacity-90"
                   >
-                    SAVE
+                    Отправить
                   </button>
                 </div>
               </div>
@@ -2179,18 +2089,11 @@ function Chat() {
                 </button>
                 </div>
                 
-                {/* Отображаем выбранную цену и комментарий рядом с превью */}
+                {/* Отображаем выбранную цену рядом с превью */}
                 <div className="flex-1">
-                  <div className="flex flex-col space-y-1">
-                    <span className="bg-pink-500 text-white px-2 py-1 rounded-full text-xs font-bold inline-block w-fit">
-                      {selectedPrice}
-                    </span>
-                    {selectedImageComment && (
-                      <span className="text-xs text-gray-300 line-clamp-2">
-                        {selectedImageComment}
-                      </span>
-                    )}
-                  </div>
+                  <span className="bg-pink-500 text-white px-2 py-1 rounded-full text-xs font-bold">
+                    {selectedPrice}
+                  </span>
                 </div>
               </div>
             </div>

@@ -281,7 +281,7 @@ export async function createTestSession(
   employeeId: string
 ): Promise<TestSession> {
   try {
-    console.log('Creating test session:', { employeeId });
+    console.log('🔄 Creating test session:', { employeeId });
     
     // Проверяем, существуют ли уже активные сессии для этого сотрудника
     const { data: existingSessions, error: checkError } = await supabase
@@ -293,9 +293,9 @@ export async function createTestSession(
       .limit(1);
     
     if (checkError) {
-      console.error('Error checking existing sessions:', checkError);
+      console.error('❌ Error checking existing sessions:', checkError);
     } else if (existingSessions && existingSessions.length > 0) {
-      console.log('Found existing active session for employee:', existingSessions[0]);
+      console.log('🔍 Found existing active session for employee:', existingSessions[0]);
       
       // Проверяем, существуют ли чаты для этой сессии
       const { data: existingChats, error: chatError } = await supabase
@@ -304,15 +304,63 @@ export async function createTestSession(
         .eq('test_session_id', existingSessions[0].id)
         .order('chat_number');
       
-      if (!chatError && existingChats && existingChats.length > 0) {
-        console.log('Using existing session with chats:', existingChats.length);
+      if (!chatError && existingChats && existingChats.length === 4) {
+        console.log('✅ Using existing session with all 4 chats:', 
+          existingChats.map(c => ({ id: c.id, chatNumber: c.chat_number })));
         return {
           ...existingSessions[0],
           chats: existingChats
         };
+      } else if (!chatError && existingChats && existingChats.length > 0) {
+        console.warn('⚠️ Found session with incomplete chats:', existingChats.length);
+        console.log('➕ Creating missing chats...');
+        
+        // Находим, каких чатов не хватает
+        const existingChatNumbers = existingChats.map(c => c.chat_number);
+        const missingChatNumbers = [1, 2, 3, 4].filter(num => !existingChatNumbers.includes(num));
+        
+        if (missingChatNumbers.length > 0) {
+          console.log('🔍 Missing chat numbers:', missingChatNumbers);
+          
+          // Создаем недостающие чаты
+          const additionalChatResults = await Promise.all(missingChatNumbers.map(chatNumber => 
+            supabase
+              .from('chats')
+              .insert([{
+                test_session_id: existingSessions[0].id,
+                chat_number: chatNumber,
+                messages: []
+              }])
+              .select()
+              .single()
+          ));
+          
+          const allChats = [...existingChats];
+          let additionalChatsCreated = true;
+          
+          // Проверяем, что все дополнительные чаты созданы успешно
+          for (let i = 0; i < additionalChatResults.length; i++) {
+            const { data, error } = additionalChatResults[i];
+            if (error) {
+              console.error(`❌ Error creating missing chat ${missingChatNumbers[i]}:`, error);
+              additionalChatsCreated = false;
+            } else {
+              console.log(`✅ Missing chat ${missingChatNumbers[i]} created successfully`);
+              allChats.push(data);
+            }
+          }
+          
+          if (additionalChatsCreated) {
+            console.log('✅ All missing chats created, using existing session with complete chats');
+            return {
+              ...existingSessions[0],
+              chats: allChats
+            };
+          }
+        }
       }
       
-      console.log('Existing session has no chats, proceeding to create new session');
+      console.log('⚠️ Existing session has incomplete chats, proceeding to create new session');
     }
     
     // Создаем тестовую сессию
@@ -327,11 +375,17 @@ export async function createTestSession(
       .single();
 
     if (sessionError || !session) {
+      console.error('❌ Failed to create test session:', sessionError);
       throw sessionError || new Error('No data returned from test session creation');
     }
 
+    console.log('✅ Test session created:', { 
+      id: session.id, 
+      employeeId: session.employee_id 
+    });
+
     // Создаем 4 пустых чата для сессии
-    console.log('Creating 4 chats for session:', session.id);
+    console.log('🔄 Creating 4 chats for session:', session.id);
     
     const chatResults = await Promise.all([1, 2, 3, 4].map(chatNumber => 
       supabase
@@ -347,26 +401,35 @@ export async function createTestSession(
 
     // Проверяем, что все чаты созданы успешно
     const chatErrors = [];
+    const createdChats = [];
+    
     for (let i = 0; i < chatResults.length; i++) {
       const { data, error } = chatResults[i];
       if (error) {
-        console.error(`Error creating chat ${i+1}:`, error);
+        console.error(`❌ Error creating chat ${i+1}:`, error);
         chatErrors.push({ chatNumber: i+1, error: error.message });
       } else {
-        console.log(`Chat ${i+1} created successfully:`, { 
+        console.log(`✅ Chat ${i+1} created successfully:`, { 
           id: data.id, 
           test_session_id: data.test_session_id,
           chat_number: data.chat_number
         });
+        createdChats.push(data);
       }
     }
     
     if (chatErrors.length > 0) {
-      console.error('Failed to create all chats:', chatErrors);
-      throw new Error('Failed to create all chats');
+      console.error('❌ Failed to create all chats:', chatErrors);
+      
+      // Если хоть какие-то чаты созданы, продолжаем с ними
+      if (createdChats.length > 0) {
+        console.warn(`⚠️ Continuing with ${createdChats.length} created chats instead of 4`);
+      } else {
+        throw new Error('Failed to create any chats for test session');
+      }
     }
 
-    // Получаем созданные чаты
+    // Повторно получаем созданные чаты для большей надежности
     const { data: chats, error: chatsError } = await supabase
       .from('chats')
       .select('*')
@@ -374,22 +437,75 @@ export async function createTestSession(
       .order('chat_number');
 
     if (chatsError) {
-      console.error('Error fetching created chats:', chatsError);
+      console.error('❌ Error fetching created chats:', chatsError);
+      // Используем те чаты, которые мы уже создали
+      if (createdChats.length > 0) {
+        console.warn('⚠️ Using directly created chats instead of fetched ones');
+        return {
+          ...session,
+          chats: createdChats
+        };
+      }
       throw new Error('Failed to fetch created chats');
     }
 
-    console.log('All chats created and fetched successfully:', {
+    // Проверяем, что у нас есть все 4 чата
+    if (!chats || chats.length < 4) {
+      console.warn(`⚠️ Only ${chats?.length || 0} chats found instead of 4, attempting repair`);
+      
+      // Находим, каких чатов не хватает
+      const existingChatNumbers = chats?.map(c => c.chat_number) || [];
+      const missingChatNumbers = [1, 2, 3, 4].filter(num => !existingChatNumbers.includes(num));
+      
+      // Создаем недостающие чаты
+      if (missingChatNumbers.length > 0) {
+        console.log('➕ Creating missing chat numbers:', missingChatNumbers);
+        
+        const repairResults = await Promise.all(missingChatNumbers.map(chatNumber => 
+          supabase
+            .from('chats')
+            .insert([{
+              test_session_id: session.id,
+              chat_number: chatNumber,
+              messages: []
+            }])
+            .select()
+            .single()
+        ));
+        
+        // Добавляем восстановленные чаты к существующим
+        const repairedChats = [...(chats || [])];
+        for (const { data, error } of repairResults) {
+          if (!error && data) {
+            repairedChats.push(data);
+            console.log(`✅ Successfully repaired missing chat ${data.chat_number}`);
+          }
+        }
+        
+        // Используем восстановленные чаты
+        if (repairedChats.length > (chats?.length || 0)) {
+          console.log('✅ Chat repair successful, now have', repairedChats.length, 'chats');
+          return {
+            ...session,
+            chats: repairedChats
+          };
+        }
+      }
+    }
+
+    console.log('✅ All chats created and fetched successfully:', {
       sessionId: session.id,
       employeeId: session.employee_id,
       chatCount: chats ? chats.length : 0,
       chatNumbers: chats ? chats.map(c => c.chat_number) : []
     });
+    
     return {
       ...session,
-      chats
+      chats: chats || []
     };
   } catch (error) {
-    console.error('Error in createTestSession:', error);
+    console.error('❌ Error in createTestSession:', error);
     throw error;
   }
 }
@@ -1045,6 +1161,8 @@ export async function generateAnalysisPrompt(sessionId: string): Promise<string>
 2)Cтадия прогрева: по диалогу понятно что модель менее заинтересована чем клиент,модель должна не задавать много вопросов, показывать тизовый контент и намеки через подтекст ненавязчиво
 3)Стадия продаж: нужен баланс между пошлым повествованием и перегрузом контентом без водводящих сообщений, сообщения примерно строятся как два наводящих сообщения по покупке контента намекающих на изображения контента чем больше продаж тем лучше
 -также нужно учитывать чтоб модель не упрашивала приобрести контент, не выглядела как шлюха, работала на глубину чека и эмоциональную привязанность, высокий бал если клиент оставит чаевые, также учитывать уровень английского и то что она держит контекст всего диалога, сообщения последовательны
+
+ВАЖНО: ВСЕ РЕЗУЛЬТАТЫ АНАЛИЗА ДОЛЖНЫ БЫТЬ ТОЛЬКО НА РУССКОМ ЯЗЫКЕ, ВКЛЮЧАЯ ВСЕ ВЕРДИКТЫ, ЗАКЛЮЧЕНИЯ, СПИСКИ СИЛЬНЫХ И СЛАБЫХ СТОРОН. НЕ ИСПОЛЬЗОВАТЬ АНГЛИЙСКИЙ ЯЗЫК НИ В КАКИХ ЧАСТЯХ ОТВЕТА.
 
 СТРОГО ОТВЕЧАЙ ТОЛЬКО В JSON ФОРМАТЕ, БЕЗ ДОПОЛНИТЕЛЬНОГО ТЕКСТА ДО ИЛИ ПОСЛЕ JSON.
 
