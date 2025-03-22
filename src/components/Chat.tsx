@@ -265,7 +265,7 @@ function generateUUID() {
 function Chat() {
   const [message, setMessage] = useState('');
   const [selectedUser, setSelectedUser] = useState('Marcus');
-  const [timeRemaining, setTimeRemaining] = useState(1200);
+  const [timeRemaining, setTimeRemaining] = useState(1200); // Изменено с 300 секунд (5 минут) на 1200 секунд (20 минут)
   const [showCongratulations, setShowCongratulations] = useState(false);
   const [calculatingResults, setCalculatingResults] = useState(false);
   const [isSessionComplete, setIsSessionComplete] = useState(false);
@@ -1249,13 +1249,9 @@ function Chat() {
 
   // Обработчик для кнопки "До свидания"
   const handleGoodbye = () => {
-    console.log('Navigating to test results with sessionId:', testSessionId);
-    if (testSessionId) {
-      navigate(`/test-results/${testSessionId}`);
-    } else {
-      console.error('No test session ID found');
-      navigate('/admin');
-    }
+    console.log('Completing test session and redirecting to completion page');
+    // Перенаправляем на страницу завершения теста вместо результатов
+    navigate('/test-completed');
   };
 
   // Отслеживание состояния анализа для каждой сессии

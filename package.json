@@ -13,6 +13,8 @@
     "@agentdeskai/browser-tools-mcp": "^1.2.1",
     "@modelcontextprotocol/server-postgres": "^0.6.2",
     "@supabase/supabase-js": "^2.39.7",
+    "@types/crypto-js": "^4.2.2",
+    "crypto-js": "^4.2.0",
     "framer-motion": "^11.0.3",
     "lucide-react": "^0.344.0",
     "openai": "^4.28.0",

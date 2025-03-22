@@ -7,24 +7,33 @@ interface AuthState {
 }
 
 export default function useAuth() {
-  // Всегда устанавливаем авторизацию администратора для прототипа
+  // Проверяем, есть ли данные в localStorage
+  const isLoggedInFromStorage = localStorage.getItem('isLoggedIn') === 'true';
+  const userRoleFromStorage = localStorage.getItem('userRole');
+  const userIdFromStorage = localStorage.getItem('userId');
+  
+  // Инициализируем состояние данными из localStorage, если они есть
   const [authState, setAuthState] = useState<AuthState>({
-    isLoggedIn: true,
-    userRole: 'admin',
-    userId: 'demo-admin-id',
+    isLoggedIn: isLoggedInFromStorage,
+    userRole: userRoleFromStorage,
+    userId: userIdFromStorage,
   });
 
-  // В прототипе автоматически авторизуем пользователя при загрузке
+  // Обновляем localStorage только если состояние авторизации изменилось вручную
+  // через методы login и logout, а не при инициализации
   useEffect(() => {
-    localStorage.setItem('isLoggedIn', 'true');
-    localStorage.setItem('userRole', 'admin');
-    localStorage.setItem('userId', 'demo-admin-id');
-  }, []);
+    // Этот эффект не должен выполняться при первом рендере
+  }, [authState]);
 
   const login = (userId: string, role: string) => {
     localStorage.setItem('isLoggedIn', 'true');
     localStorage.setItem('userRole', role);
     localStorage.setItem('userId', userId);
+    
+    // Добавляем метку администратора если роль admin
+    if (role === 'admin') {
+      localStorage.setItem('isAdmin', 'true');
+    }
     
     setAuthState({
       isLoggedIn: true,
@@ -34,21 +43,18 @@ export default function useAuth() {
   };
 
   const logout = () => {
-    // Для прототипа отключаем настоящий выход из системы
-    console.log('Выход из системы отключен в прототипе');
-    
-    // Если нужно будет включить реальный выход, раскомментируйте код ниже
-    /*
+    // Удаляем все данные об авторизации из localStorage
     localStorage.removeItem('isLoggedIn');
     localStorage.removeItem('userRole');
     localStorage.removeItem('userId');
+    localStorage.removeItem('isAdmin');
     
+    // Сбрасываем состояние авторизации
     setAuthState({
       isLoggedIn: false,
       userRole: null,
       userId: null,
     });
-    */
   };
 
   return {
