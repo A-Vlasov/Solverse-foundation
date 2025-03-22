@@ -21,6 +21,15 @@ export interface Employee {
   created_at?: string;
 }
 
+export interface CandidateToken {
+  id: string;
+  employee_id: string;
+  token: string;
+  created_at: string;
+  expires_at: string;
+  is_used: boolean;
+}
+
 export interface ChatMessage {
   content: string;
   time: string;
@@ -1271,11 +1280,12 @@ export async function generateAnalysisPrompt(sessionId: string): Promise<string>
   }
 }
 
-export async function saveCandidateForm(formData: any): Promise<CandidateForm> {
+export async function saveCandidateForm(userId: string, formData: Record<string, any>) {
   try {
-    // Получаем ID сотрудника из sessionStorage
-    const candidateData = JSON.parse(sessionStorage.getItem('candidateData') || '{}');
-    const employeeId = candidateData.userId;
+    console.log('Saving candidate form data for user:', userId, formData);
+    
+    // Получаем ID сотрудника из параметра
+    const employeeId = userId;
     
     if (!employeeId) {
       throw new Error('ID сотрудника не найден. Пожалуйста, начните процесс регистрации заново.');
@@ -1283,39 +1293,90 @@ export async function saveCandidateForm(formData: any): Promise<CandidateForm> {
     
     // Обновляем имя сотрудника в таблице employees
     if (formData.first_name) {
-      await supabase
+      const { error: nameUpdateError } = await supabase
         .from('employees')
         .update({ first_name: formData.first_name })
         .eq('id', employeeId);
+        
+      if (nameUpdateError) {
+        console.error('Error updating employee name:', nameUpdateError);
+        // Продолжаем процесс даже при ошибке обновления имени
+      }
     }
     
-    // Удаляем first_name из данных перед сохранением в candidate_forms
-    const { first_name, ...formDataWithoutName } = formData;
-    
-    // Добавляем employee_id к данным анкеты
-    const candidateFormWithEmployeeId = {
-      ...formDataWithoutName,
-      employee_id: employeeId,
-    };
-
-    const { data, error } = await supabase
+    // Проверяем, существует ли уже анкета для этого сотрудника
+    const { data: existingForm, error: checkError } = await supabase
       .from('candidate_forms')
-      .insert([candidateFormWithEmployeeId])
-      .select()
+      .select('id')
+      .eq('employee_id', employeeId)
       .single();
-
-    if (error) {
-      console.error('Error saving candidate form:', error);
-      throw new Error(`Error saving candidate form: ${error.message}`);
+      
+    if (checkError && checkError.code !== 'PGRST116') { // PGRST116 - запись не найдена
+      console.error('Error checking existing form:', checkError);
+      // Продолжаем процесс даже при ошибке
     }
-
-    if (!data) {
-      throw new Error('No data returned from candidate form creation');
+    
+    // Подготавливаем данные анкеты
+    const formDataToSave = {
+      telegram_tag: formData.telegram_tag,
+      shift: formData.shift,
+      experience: formData.experience,
+      motivation: formData.motivation,
+      about_me: formData.about_me,
+      updated_at: new Date().toISOString()
+    };
+    
+    let result;
+    
+    // Если анкета уже существует, обновляем её
+    if (existingForm) {
+      console.log('Updating existing candidate form:', existingForm.id);
+      
+      const { data, error } = await supabase
+        .from('candidate_forms')
+        .update(formDataToSave)
+        .eq('id', existingForm.id)
+        .select()
+        .single();
+        
+      if (error) {
+        console.error('Error updating candidate form:', error);
+        throw new Error(`Error updating candidate form: ${error.message}`);
+      }
+      
+      result = data;
+    } else {
+      // Иначе создаем новую анкету
+      console.log('Creating new candidate form for employee:', employeeId);
+      
+      // Добавляем employee_id к данным анкеты
+      const newFormData = {
+        ...formDataToSave,
+        employee_id: employeeId,
+      };
+      
+      const { data, error } = await supabase
+        .from('candidate_forms')
+        .insert([newFormData])
+        .select()
+        .single();
+        
+      if (error) {
+        console.error('Error saving candidate form:', error);
+        throw new Error(`Error saving candidate form: ${error.message}`);
+      }
+      
+      result = data;
     }
-
+    
+    console.log('Candidate form saved successfully:', result);
+    
+    // Очищаем sessionStorage после успешного сохранения
+    sessionStorage.removeItem('candidateFormData');
+    
     // Сохраняем employee_id в возвращаемых данных для последующего использования
     return {
-      ...data,
+      ...result,
       employee_id: employeeId
     };
   } catch (error) {
@@ -1375,5 +1436,148 @@ export async function createUser(userData: {
   } catch (error) {
     console.error('Error in createUser:', error);
     throw error;
+  }
+}
+
+/**
+ * Создает и сохраняет токен для доступа кандидата к форме регистрации
+ */
+export async function createCandidateToken(employeeId: string): Promise<string> {
+  try {
+    console.log('Creating candidate token for employee:', employeeId);
+    
+    // Генерируем уникальный токен
+    const token = Math.random().toString(36).substring(2, 10) + 
+                 Date.now().toString(36) + 
+                 Math.random().toString(36).substring(2, 10);
+    
+    // Устанавливаем срок действия токена (7 дней)
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 7);
+    
+    // Деактивируем все предыдущие токены для этого сотрудника
+    try {
+      await supabase
+        .from('candidate_tokens')
+        .update({ is_used: true })
+        .eq('employee_id', employeeId)
+        .eq('is_used', false);
+        
+      console.log('Deactivated previous tokens for employee:', employeeId);
+    } catch (deactivateError) {
+      console.warn('Error deactivating previous tokens:', deactivateError);
+      // Продолжаем выполнение даже при ошибке
+    }
+    
+    // Сохраняем новый токен в базе данных
+    const { data, error } = await supabase
+      .from('candidate_tokens')
+      .insert([
+        {
+          employee_id: employeeId,
+          token: token,
+          expires_at: expiresAt.toISOString(),
+          is_used: false
+        }
+      ])
+      .select()
+      .single();
+      
+    if (error) {
+      console.error('Error creating candidate token:', error);
+      throw new Error(`Failed to create candidate token: ${error.message}`);
+    }
+    
+    if (!data) {
+      throw new Error('No data returned from candidate token creation');
+    }
+    
+    console.log('Token created successfully:', data.token);
+    return data.token;
+  } catch (error) {
+    console.error('Error in createCandidateToken:', error);
+    throw error;
+  }
+}
+
+/**
+ * Проверяет валидность токена кандидата и возвращает ID сотрудника
+ */
+export async function validateCandidateToken(token: string): Promise<string | null> {
+  try {
+    console.log('Validating candidate token:', token);
+    
+    // Получаем токен из базы данных
+    const { data, error } = await supabase
+      .from('candidate_tokens')
+      .select('id, employee_id, expires_at, is_used')
+      .eq('token', token)
+      .single();
+    
+    if (error) {
+      console.error('Error validating token:', error);
+      return null;
+    }
+    
+    // Проверяем, не истек ли срок действия токена
+    const expiresAt = new Date(data.expires_at);
+    const now = new Date();
+    
+    if (expiresAt < now) {
+      console.error('Token has expired:', {
+        token: token,
+        expiresAt: expiresAt.toISOString(),
+        now: now.toISOString()
+      });
+      return null;
+    }
+    
+    // Помечаем токен как использованный
+    const { error: updateError } = await supabase
+      .from('candidate_tokens')
+      .update({ 
+        is_used: true,
+        last_used_at: new Date().toISOString(),
+        ip_address: window.location.hostname,
+        user_agent: navigator.userAgent
+      })
+      .eq('id', data.id);
+    
+    if (updateError) {
+      console.warn('Error updating token usage status:', updateError);
+      // Продолжаем даже если обновление статуса не удалось
+    }
+    
+    console.log('Token validated successfully for employee:', data.employee_id);
+    return data.employee_id;
+    
+  } catch (error) {
+    console.error('Exception in validateCandidateToken:', error);
+    return null;
+  }
+}
+
+export async function getCandidateForm(employeeId: string) {
+  try {
+    if (!employeeId) {
+      console.error('No employee ID provided for getCandidateForm');
+      return null;
+    }
+
+    const { data, error } = await supabase
+      .from('candidate_forms')
+      .select('*')
+      .eq('employee_id', employeeId)
+      .single();
+
+    if (error) {
+      console.error('Error fetching candidate form:', error);
+      return null;
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Exception in getCandidateForm:', error);
+    return null;
   }
 }

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { UserCircle, FileText, ArrowRight, Clock, AlertCircle } from 'lucide-react';
-import { saveCandidateForm } from '../lib/supabase';
+import { saveCandidateForm, validateCandidateToken, getEmployee, getCandidateForm } from '../lib/supabase';
 
 function CandidateForm() {
   const [formData, setFormData] = useState({
@@ -16,25 +16,134 @@ function CandidateForm() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [tokenError, setTokenError] = useState<string | null>(null);
   
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
-    const savedData = JSON.parse(sessionStorage.getItem('candidateData') || '{}');
-    console.log('Loading candidate data in CandidateForm:', savedData);
+    const validateTokenAndLoadData = async () => {
+      try {
+        setIsLoading(true);
+        
+        // Получаем токен из URL параметров
+        const queryParams = new URLSearchParams(location.search);
+        const token = queryParams.get('token');
+        
+        if (!token) {
+          console.error('No token provided in URL');
+          setTokenError('Отсутствует токен доступа. Пожалуйста, проверьте ссылку, которую вы получили.');
+          setIsLoading(false);
+          return;
+        }
+        
+        // Проверяем данные из sessionStorage
+        const savedData = JSON.parse(sessionStorage.getItem('candidateData') || '{}');
+        
+        // Если в sessionStorage уже есть данные с таким же токеном и userId, используем их
+        if (savedData.token === token && savedData.userId) {
+          console.log('Using cached session data for token:', token);
+          
+          // Проверяем, заполнена ли уже форма
+          if (savedData.formCompleted) {
+            console.log('Form already completed, redirecting to test info');
+            navigate('/test-info');
+            return;
+          }
+          
+          // Загружаем данные сотрудника
+          await loadEmployeeData(savedData.userId);
+        } else {
+          // Иначе проверяем токен заново
+          const employeeId = await validateCandidateToken(token);
+          
+          if (!employeeId) {
+            console.error('Invalid or expired token:', token);
+            setTokenError('Недействительный или истекший токен доступа. Пожалуйста, запросите новую ссылку.');
+            setIsLoading(false);
+            return;
+          }
+          
+          console.log('Valid token for employee ID:', employeeId);
+          
+          // Сохраняем ID сотрудника и токен в sessionStorage
+          const candidateData = {
+            userId: employeeId,
+            token: token
+          };
+          
+          sessionStorage.setItem('candidateData', JSON.stringify(candidateData));
+          console.log('Candidate data saved to sessionStorage:', candidateData);
+          
+          // Загружаем данные сотрудника
+          await loadEmployeeData(employeeId);
+        }
+      } catch (error) {
+        console.error('Error validating token:', error);
+        setTokenError('Произошла ошибка при проверке доступа. Пожалуйста, попробуйте позже.');
+        setIsLoading(false);
+      }
+    };
     
-    if (savedData) {
-      setFormData(prevData => ({
-        ...prevData,
-        first_name: savedData.first_name || prevData.first_name,
-        telegram_tag: savedData.telegram_tag || prevData.telegram_tag,
-        shift: savedData.shift || prevData.shift,
-        experience: savedData.experience || prevData.experience,
-        motivation: savedData.motivation || prevData.motivation,
-        about_me: savedData.about_me || prevData.about_me
-      }));
-    }
-  }, []);
+    // Вспомогательная функция для загрузки данных сотрудника
+    const loadEmployeeData = async (employeeId: string) => {
+      try {
+        // Загружаем данные сотрудника, если они есть
+        const employee = await getEmployee(employeeId);
+        if (employee) {
+          setFormData(prevData => ({
+            ...prevData,
+            first_name: employee.first_name || prevData.first_name
+          }));
+        }
+        
+        // Проверяем, есть ли уже данные анкеты для этого сотрудника
+        const candidateForm = await getCandidateForm(employeeId);
+        if (candidateForm) {
+          console.log('Existing candidate form found:', candidateForm);
+          
+          // Обновляем данные в sessionStorage
+          const savedData = JSON.parse(sessionStorage.getItem('candidateData') || '{}');
+          const updatedData = {
+            ...savedData,
+            first_name: employee?.first_name || '',
+            telegram_tag: candidateForm.telegram_tag,
+            shift: candidateForm.shift,
+            formCompleted: true
+          };
+          
+          sessionStorage.setItem('candidateData', JSON.stringify(updatedData));
+          console.log('Candidate data updated in sessionStorage:', updatedData);
+          
+          // Перенаправляем на страницу с информацией о тесте
+          navigate('/test-info');
+          return;
+        }
+        
+        // Загружаем ранее сохраненные данные формы из sessionStorage
+        const savedFormData = JSON.parse(sessionStorage.getItem('candidateFormData') || '{}');
+        console.log('Loading saved form data:', savedFormData);
+        
+        setFormData(prevData => ({
+          ...prevData,
+          first_name: savedFormData.first_name || prevData.first_name,
+          telegram_tag: savedFormData.telegram_tag || prevData.telegram_tag,
+          shift: savedFormData.shift || prevData.shift,
+          experience: savedFormData.experience || prevData.experience,
+          motivation: savedFormData.motivation || prevData.motivation,
+          about_me: savedFormData.about_me || prevData.about_me
+        }));
+      } catch (employeeError) {
+        console.warn('Error loading employee data:', employeeError);
+        // Продолжаем выполнение даже при ошибке
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    validateTokenAndLoadData();
+  }, [location.search, navigate]);
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
@@ -69,61 +178,108 @@ function CandidateForm() {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleNext = async () => {
-    setSubmitError(null);
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
     
     if (!validateForm()) {
       return;
     }
-
-    setIsSubmitting(true);
-
+    
     try {
-      // Сохраняем данные в базу
-      const savedForm = await saveCandidateForm(formData);
-      console.log('Form saved successfully:', savedForm);
-
-      // Сохраняем данные в sessionStorage
-      const existingData = JSON.parse(sessionStorage.getItem('candidateData') || '{}');
-      const updatedData = {
-        ...existingData,
+      setIsSubmitting(true);
+      setSubmitError(null);
+      
+      // Получаем ID пользователя и другие данные из sessionStorage
+      const candidateData = JSON.parse(sessionStorage.getItem('candidateData') || '{}');
+      const userId = candidateData.userId;
+      
+      if (!userId) {
+        setSubmitError('Ошибка идентификации пользователя. Пожалуйста, обновите страницу и попробуйте снова.');
+        return;
+      }
+      
+      // Сохраняем данные формы в базе данных
+      await saveCandidateForm(userId, formData);
+      
+      // Обновляем данные в sessionStorage, сохраняя информацию о тестовой сессии
+      const updatedCandidateData = {
+        ...candidateData,
         first_name: formData.first_name,
         telegram_tag: formData.telegram_tag,
         shift: formData.shift,
-        experience: formData.experience,
-        motivation: formData.motivation,
-        about_me: formData.about_me,
-        formId: savedForm.id, // Сохраняем ID формы
-        employeeId: savedForm.employee_id // Сохраняем ID сотрудника
+        formCompleted: true
       };
       
-      sessionStorage.setItem('candidateData', JSON.stringify(updatedData));
+      sessionStorage.setItem('candidateData', JSON.stringify(updatedCandidateData));
+      console.log('Updated candidate data in sessionStorage:', updatedCandidateData);
       
-      // Переходим к следующему шагу
+      // Перенаправляем на страницу с тестовой информацией
       navigate('/test-info');
     } catch (error) {
-      console.error('Error saving form:', error);
-      setSubmitError(error instanceof Error ? error.message : 'Произошла ошибка при сохранении формы');
+      console.error('Error submitting form:', error);
+      setSubmitError('Произошла ошибка при отправке формы. Пожалуйста, попробуйте позже.');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement | HTMLInputElement | HTMLSelectElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
     
-    // Очищаем ошибку поля при изменении
+    // Обновляем состояние формы
+    setFormData(prevData => {
+      const newData = { ...prevData, [name]: value };
+      
+      // Сохраняем обновленные данные формы в sessionStorage
+      sessionStorage.setItem('candidateFormData', JSON.stringify(newData));
+      
+      return newData;
+    });
+    
+    // Сбрасываем ошибку для этого поля при изменении
     if (errors[name]) {
-      setErrors(prev => ({
-        ...prev,
-        [name]: ''
-      }));
+      setErrors(prevErrors => {
+        const newErrors = { ...prevErrors };
+        delete newErrors[name];
+        return newErrors;
+      });
     }
   };
+
+  // Отображаем ошибку токена, если она есть
+  if (tokenError) {
+    return (
+      <div className="min-h-screen bg-[#1a1a1a] flex items-center justify-center py-8 px-4">
+        <div className="max-w-md w-full bg-[#2d2d2d] rounded-2xl shadow-xl p-8 border border-[#3d3d3d]">
+          <div className="flex flex-col items-center mb-6">
+            <AlertCircle className="w-16 h-16 text-red-500 mb-4" />
+            <h1 className="text-2xl font-bold text-white text-center">
+              Ошибка доступа
+            </h1>
+            <p className="text-gray-400 mt-2 text-center">{tokenError}</p>
+          </div>
+          <button
+            onClick={() => window.location.href = '/'}
+            className="w-full py-3 bg-gradient-to-r from-pink-500 to-purple-500 rounded-lg font-semibold hover:opacity-90 transition-opacity"
+          >
+            Вернуться на главную
+          </button>
+        </div>
+      </div>
+    );
+  }
+  
+  // Отображаем индикатор загрузки
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-[#1a1a1a] flex items-center justify-center py-8 px-4">
+        <div className="flex flex-col items-center">
+          <div className="w-16 h-16 border-4 border-t-pink-500 border-r-transparent border-b-transparent border-l-transparent rounded-full animate-spin mb-4"></div>
+          <p className="text-gray-400">Проверка доступа...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#1a1a1a] py-8 px-4">
@@ -301,8 +457,8 @@ function CandidateForm() {
 
           <div className="mt-8">
             <button
-              type="button"
-              onClick={handleNext}
+              type="submit"
+              onClick={handleSubmit}
               disabled={isSubmitting}
               className={`w-full py-4 rounded-lg text-white font-semibold transition duration-200 flex items-center justify-center gap-2 bg-gradient-to-r from-pink-500 to-purple-500 hover:opacity-90 ${
                 isSubmitting ? 'opacity-50 cursor-not-allowed' : ''

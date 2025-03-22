@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, ChangeEvent } from 'react';
 import { MessageCircle, Send, Menu, Bell, Settings, Search, Heart, Image, AtSign, DollarSign, Timer, Bot, AlertCircle, Info, Check, CheckCheck, X, ImagePlus, Upload, Trash2, ExternalLink, Eye, Loader, LogOut } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { generateGrokResponse, analyzeDialogs } from '../services/grok';
 import { userPrompts, getPromptSummary } from '../data/userPrompts';
 import PromptModal from './PromptModal';
@@ -320,6 +320,9 @@ function Chat() {
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showImageGallery, setShowImageGallery] = useState(false);
+  
+  // Получаем sessionId из параметров URL
+  const { sessionId: urlSessionId } = useParams<{ sessionId: string }>();
 
   // Load custom images from localStorage on component mount
   useEffect(() => {
@@ -450,8 +453,45 @@ function Chat() {
       
       try {
         console.log('🔄 Starting test session initialization');
-        // Проверяем, существует ли уже сессия в sessionStorage
+        
+        // Проверяем наличие ID сессии в URL
+        if (urlSessionId) {
+          console.log('🔍 Found sessionId in URL:', urlSessionId);
+          try {
+            // Проверяем, существует ли сессия с таким ID
+            const session = await getTestSession(urlSessionId);
+            
+            if (session && !session.completed) {
+              console.log('✅ Using session from URL parameter:', urlSessionId);
+              setTestSessionId(urlSessionId);
+              sessionStorage.setItem('currentTestSessionId', urlSessionId);
+              
+              // Проверяем, существуют ли чаты для этой сессии
+              const sessionChats = await getTestSessionChats(urlSessionId);
+              
+              if (sessionChats && sessionChats.length > 0) {
+                console.log('📋 Session has', sessionChats.length, 'chats');
+                isInitializing = false;
+                return;
+              } else {
+                console.warn('⚠️ Session from URL has no chats, will proceed to create new session');
+              }
+            } else if (session && session.completed) {
+              console.warn('⚠️ Session from URL is already completed:', urlSessionId);
+              // Если сессия завершена, перенаправляем на результаты
+              navigate(`/test-results/${urlSessionId}`);
+              return;
+            } else {
+              console.warn('⚠️ Session from URL not found:', urlSessionId);
+            }
+          } catch (error) {
+            console.error('❌ Error checking session from URL:', error);
+          }
+        }
+        
+        // Если URL не содержит sessionId или сессия не найдена, проверяем sessionStorage
         const existingSessionId = sessionStorage.getItem('currentTestSessionId');
+        
         if (existingSessionId) {
           console.log('🔍 Found existing session ID in storage:', existingSessionId);
           // Проверяем, существуют ли чаты для этой сессии

@@ -7,22 +7,24 @@ import {
   Link as LinkIcon,
   Copy,
   CheckCircle,
-  RefreshCw,
-  ExternalLink,
   AlertCircle,
+  X,
+  Share2
 } from 'lucide-react';
-import { createEmployee, completeAllEmployeeTestSessions } from '../lib/supabase';
+import { createEmployee, completeAllEmployeeTestSessions, createCandidateToken } from '../lib/supabase';
 
 function NewEmployee() {
   const navigate = useNavigate();
   const [linkGenerated, setLinkGenerated] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [showOnlyLink, setShowOnlyLink] = useState(false);
   const [formData, setFormData] = useState({
     startDate: new Date().toISOString().split('T')[0],
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [testLink, setTestLink] = useState('');
+  const [candidateToken, setCandidateToken] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,16 +57,21 @@ function NewEmployee() {
         // Продолжаем выполнение даже при ошибке
       }
 
-      // Generate test link
-      const token = Math.random().toString(36).substring(7) + Date.now().toString(36);
-      const newLink = `${window.location.origin}/candidate`;
+      // Создаем токен для кандидата
+      const token = await createCandidateToken(employee.id);
+      console.log('Created candidate token:', token);
+      
+      // Generate test link with token
+      const newLink = `${window.location.origin}/candidate?token=${token}`;
       setTestLink(newLink);
+      setCandidateToken(token);
       setLinkGenerated(true);
 
       // Store candidate data in session storage
       const candidateData = {
         userId: employee.id,
-        startDate: formData.startDate
+        startDate: formData.startDate,
+        token: token
       };
       console.log('Saving candidate data to sessionStorage:', candidateData);
       
@@ -82,6 +89,9 @@ function NewEmployee() {
       sessionStorage.setItem('candidateData', JSON.stringify(candidateData));
       
       console.log('Session data reset completed, only new candidate data preserved');
+      
+      // Сразу открываем интерфейс только со ссылкой
+      setShowOnlyLink(true);
     } catch (err) {
       console.error('Error creating employee:', err);
       setError('Ошибка при создании профиля сотрудника. Пожалуйста, попробуйте снова.');
@@ -90,22 +100,115 @@ function NewEmployee() {
     }
   };
 
-  const handleRegenerateLink = () => {
-    const token = Math.random().toString(36).substring(7) + Date.now().toString(36);
-    const newLink = `${window.location.origin}/candidate`;
-    setTestLink(newLink);
-    setLinkCopied(false);
-  };
-
   const handleCopyLink = () => {
-    navigator.clipboard.writeText(testLink);
-    setLinkCopied(true);
-    setTimeout(() => setLinkCopied(false), 2000);
+    try {
+      // Современный метод копирования в буфер обмена
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(testLink)
+          .then(() => {
+            console.log('Ссылка успешно скопирована в буфер обмена');
+            setLinkCopied(true);
+            setTimeout(() => setLinkCopied(false), 2000);
+          })
+          .catch(err => {
+            console.error('Ошибка при копировании через Clipboard API:', err);
+            fallbackCopyMethod();
+          });
+      } else {
+        // Резервный метод, если Clipboard API недоступен
+        fallbackCopyMethod();
+      }
+    } catch (err) {
+      console.error('Ошибка при копировании ссылки:', err);
+      fallbackCopyMethod();
+    }
   };
 
-  const handleOpenLink = () => {
-    navigate('/candidate');
+  // Резервный метод копирования с использованием document.execCommand
+  const fallbackCopyMethod = () => {
+    try {
+      // Создаем временный элемент input
+      const textArea = document.createElement('textarea');
+      textArea.value = testLink;
+      
+      // Делаем элемент невидимым
+      textArea.style.position = 'fixed';
+      textArea.style.left = '-999999px';
+      textArea.style.top = '-999999px';
+      document.body.appendChild(textArea);
+      
+      // Выделяем и копируем текст
+      textArea.focus();
+      textArea.select();
+      
+      const successful = document.execCommand('copy');
+      if (successful) {
+        console.log('Ссылка успешно скопирована (резервный метод)');
+        setLinkCopied(true);
+        setTimeout(() => setLinkCopied(false), 2000);
+      } else {
+        console.error('Не удалось скопировать ссылку (резервный метод)');
+        alert('Не удалось скопировать ссылку автоматически. Пожалуйста, выделите и скопируйте её вручную.');
+      }
+      
+      // Удаляем временный элемент
+      document.body.removeChild(textArea);
+    } catch (err) {
+      console.error('Ошибка при копировании (резервный метод):', err);
+      alert('Не удалось скопировать ссылку. Пожалуйста, выделите и скопируйте её вручную.');
+    }
   };
+
+  const handleShowOnlyLink = () => {
+    setShowOnlyLink(true);
+  };
+
+  const handleCloseOnlyLink = () => {
+    // При закрытии окна со ссылкой перенаправляем на дашборд
+    navigate('/admin');
+  };
+
+  // Режим отображения только ссылки
+  if (showOnlyLink && testLink) {
+    return (
+      <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4">
+        <div className="w-full max-w-2xl bg-[#2d2d2d] rounded-xl p-6 relative">
+          <button 
+            onClick={handleCloseOnlyLink}
+            className="absolute top-4 right-4 p-2 rounded-full bg-[#1a1a1a] hover:bg-[#3d3d3d] transition-colors"
+          >
+            <X className="w-5 h-5 text-gray-400" />
+          </button>
+          
+          <div className="text-center mb-6">
+            <h2 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-purple-500">Ссылка для соискателя</h2>
+            <p className="text-gray-400 mt-2">Скопируйте эту ссылку и отправьте соискателю</p>
+          </div>
+          
+          <div className="bg-[#1a1a1a] p-6 rounded-lg border-2 border-pink-500 mb-6">
+            <p className="text-gray-200 break-all text-center font-mono">{testLink}</p>
+          </div>
+          
+          <button
+            onClick={handleCopyLink}
+            className="w-full py-4 bg-gradient-to-r from-pink-500 to-purple-500 rounded-lg font-semibold hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
+          >
+            {linkCopied ? (
+              <>
+                <CheckCircle className="w-6 h-6" />
+                Скопировано!
+              </>
+            ) : (
+              <>
+                <Copy className="w-6 h-6" />
+                Копировать ссылку
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#1a1a1a] text-gray-100 p-6">
@@ -186,7 +289,7 @@ function NewEmployee() {
                       type="text"
                       value={testLink}
                       readOnly
-                      className="flex-1 bg-transparent border-none focus:outline-none text-gray-400"
+                      className="flex-1 bg-transparent border-none focus:outline-none text-gray-400 overflow-x-auto"
                     />
                     <div className="flex items-center gap-2">
                       <button
@@ -200,21 +303,15 @@ function NewEmployee() {
                           <Copy className="w-5 h-5 text-gray-400" />
                         )}
                       </button>
-                      <button
-                        onClick={handleRegenerateLink}
-                        className="p-2 hover:bg-[#3d3d3d] rounded-lg transition-colors"
-                        title="Сгенерировать новую ссылку"
-                      >
-                        <RefreshCw className="w-5 h-5 text-gray-400" />
-                      </button>
                     </div>
                   </div>
+                  
                   <button
-                    onClick={handleOpenLink}
-                    className="w-full py-2 bg-gradient-to-r from-pink-500 to-purple-500 rounded-lg font-semibold hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
+                    onClick={handleShowOnlyLink}
+                    className="w-full py-2 mt-2 bg-gradient-to-r from-pink-500 to-purple-500 rounded-lg font-semibold hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
                   >
-                    <ExternalLink className="w-5 h-5" />
-                    Открыть анкету
+                    <Share2 className="w-5 h-5" />
+                    Показать только ссылку
                   </button>
                 </div>
 
