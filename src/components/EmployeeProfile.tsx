@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useNavigation } from '../../app/components/SimpleNavigation';
+import { getEmployeeIdFromPath } from '../../app/components/EmployeeNavigationFix';
 import {
   ArrowLeft,
   Calendar,
@@ -29,37 +30,56 @@ import {
   Moon,
   Sunset,
 } from 'lucide-react';
-import { getCandidateFormByEmployeeId, CandidateFormData, getEmployee, Employee } from '../lib/supabase';
+import { CandidateFormData, Employee } from '../lib/supabase';
 
 function EmployeeProfile() {
-  const { id } = useParams();
-  const navigate = useNavigate();
+  const [id, setId] = useState<string | null>(null);
+  const { navigate } = useNavigation();
   const [candidateForm, setCandidateForm] = useState<CandidateFormData | null>(null);
   const [employee, setEmployee] = useState<Employee | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
+  const [error, setError] = useState<string | null>(null);
 
+  // Используем API вместо прямых обращений к базе данных
   useEffect(() => {
-    const fetchData = async () => {
-      if (id) {
-        try {
-          setLoading(true);
-          const [employeeData, formData] = await Promise.all([
-            getEmployee(id),
-            getCandidateFormByEmployeeId(id)
-          ]);
-          setEmployee(employeeData);
-          setCandidateForm(formData);
-        } catch (error) {
-          console.error('Error fetching data:', error);
-        } finally {
-          setLoading(false);
+    // Получаем ID сотрудника из пути
+    const employeeId = getEmployeeIdFromPath();
+    console.log('Employee ID from path:', employeeId);
+    
+    if (!employeeId) {
+      setLoading(false);
+      setError('ID сотрудника не найден');
+      return;
+    }
+
+    setId(employeeId);
+    
+    // Загружаем данные через API
+    const fetchEmployeeData = async () => {
+      try {
+        const response = await fetch(`/api/profile?id=${employeeId}`);
+        
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Ошибка загрузки данных');
         }
+        
+        const data = await response.json();
+        console.log('Получены данные сотрудника:', data);
+        
+        setEmployee(data.employee);
+        setCandidateForm(data.candidateForm);
+      } catch (error) {
+        console.error('Error loading employee data:', error);
+        setError(error instanceof Error ? error.message : 'Ошибка загрузки данных');
+      } finally {
+        setLoading(false);
       }
     };
-
-    fetchData();
-  }, [id]);
+    
+    fetchEmployeeData();
+  }, []);
 
   // Mock data - replace with real data from your backend
   const employeeStats = {

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigation } from '../../app/components/SimpleNavigation';
 import {
   ArrowLeft,
   UserPlus,
@@ -11,10 +11,9 @@ import {
   X,
   Share2
 } from 'lucide-react';
-import { createEmployee, completeAllEmployeeTestSessions, createCandidateToken } from '../lib/supabase';
 
 function NewEmployee() {
-  const navigate = useNavigate();
+  const { navigate } = useNavigation();
   const [linkGenerated, setLinkGenerated] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const [showOnlyLink, setShowOnlyLink] = useState(false);
@@ -35,33 +34,33 @@ function NewEmployee() {
     try {
       setIsSubmitting(true);
       
-      // Create employee in Supabase
-      const employee = await createEmployee({
-        first_name: '',
-        department: 'Candidates',
-        level: 'Junior',
-        success: 0,
-        trend: 'up',
-        improvement: '',
-        status: 'Active'
+      // Используем API-маршрут вместо прямого обращения к базе данных
+      const response = await fetch('/api/employees/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          firstName: '',
+          department: 'Candidates',
+          level: 'Junior',
+          status: 'Active'
+        }),
       });
       
-      console.log('Employee created successfully:', employee);
-      
-      // Завершаем все активные сессии для этого сотрудника (на всякий случай)
-      try {
-        await completeAllEmployeeTestSessions(employee.id);
-        console.log('All previous sessions for this employee have been marked as completed');
-      } catch (sessionError) {
-        console.error('Error completing previous sessions:', sessionError);
-        // Продолжаем выполнение даже при ошибке
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Ошибка при создании сотрудника');
       }
-
-      // Создаем токен для кандидата
-      const token = await createCandidateToken(employee.id);
-      console.log('Created candidate token:', token);
       
-      // Generate test link with token
+      const data = await response.json();
+      console.log('Employee created successfully:', data);
+      
+      // Используем ссылку и токен из ответа API
+      const employee = data.employee;
+      const token = data.token;
+      
+      // Формируем полную ссылку (включая origin)
       const newLink = `${window.location.origin}/candidate?token=${token}`;
       setTestLink(newLink);
       setCandidateToken(token);

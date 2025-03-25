@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useState, useRef } from 'react';
+import { useNavigation } from '../../app/components/SimpleNavigation';
 import { ClipboardList, Clock, AlertCircle } from 'lucide-react';
 import { getCandidateForm } from '../lib/supabase';
 
@@ -14,12 +14,17 @@ interface CandidateData {
 }
 
 function TestInfo() {
-  const navigate = useNavigate();
+  const { navigate } = useNavigation();
+  // Используем ref для отслеживания, был ли уже выполнен редирект
+  const redirected = useRef(false);
   const [candidateData, setCandidateData] = useState<CandidateData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
   useEffect(() => {
+    // Предотвращаем повторный запуск эффекта
+    if (redirected.current) return;
+    
     const loadCandidateData = async () => {
       try {
         setIsLoading(true);
@@ -33,6 +38,7 @@ function TestInfo() {
         if (!data.userId) {
           console.warn('Missing required fields in TestInfo:', data);
           // Возвращаем пользователя на форму, если данные отсутствуют
+          redirected.current = true;
           navigate('/candidate');
           return;
         }
@@ -59,6 +65,7 @@ function TestInfo() {
           } else {
             // Если данные не найдены, возвращаем пользователя на форму
             console.warn('Candidate form data not found, redirecting to form');
+            redirected.current = true;
             navigate('/candidate');
             return;
           }
@@ -72,12 +79,16 @@ function TestInfo() {
     };
     
     loadCandidateData();
-  }, [navigate]);
+  }, []); // Удаляем navigate из зависимостей
 
   const handleStartTest = () => {
+    // Проверяем, был ли уже выполнен редирект
+    if (redirected.current) return;
+    
     // Проверяем наличие данных перед началом тестирования
     if (!candidateData || !candidateData.userId) {
       console.warn('Missing candidate data before starting test:', candidateData);
+      redirected.current = true;
       navigate('/candidate');
       return;
     }
@@ -87,10 +98,12 @@ function TestInfo() {
     // Проверяем наличие ID тестовой сессии
     if (candidateData.testSessionId) {
       console.log('Redirecting to existing test session:', candidateData.testSessionId);
+      redirected.current = true;
       navigate(`/test-session/${candidateData.testSessionId}`);
     } else {
       // Если ID сессии нет, переходим к чату для создания новой сессии
       console.log('No test session ID found, redirecting to chat');
+      redirected.current = true;
       navigate('/chat');
     }
   };

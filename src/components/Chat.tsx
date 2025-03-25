@@ -1,22 +1,11 @@
 import React, { useState, useEffect, useRef, ChangeEvent } from 'react';
 import { MessageCircle, Send, Menu, Bell, Settings, Search, Heart, Image, AtSign, DollarSign, Timer, Bot, AlertCircle, Info, Check, CheckCheck, X, ImagePlus, Upload, Trash2, ExternalLink, Eye, Loader, LogOut } from 'lucide-react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { generateGrokResponse, analyzeDialogs } from '../services/grok';
+import { useNavigation, useParams } from '../../app/components/SimpleNavigation';
 import { userPrompts, getPromptSummary } from '../data/userPrompts';
 import PromptModal from './PromptModal';
-import { 
-  addMessageToTestSession, 
-  createTestSession, 
-  completeTestSession,
-  ChatMessage as SupabaseChatMessage,
-  getEmployees,
-  getTestSessionChats,
-  getTestSession,
-  TestSession,
-  generateAnalysisPrompt,
-  saveTestResult,
-  DialogAnalysisResult
-} from '../lib/supabase';
+import type { DialogAnalysisResult, ChatMessage as SupabaseChatMessage } from '../lib/supabase';
+// Импортируем сервисы для API
+import { chatService, testSessionService, testResultService, grokService } from '../services/api';
 
 // Типы для использования в Chat компоненте
 type MessageRoleInternal = 'user' | 'assistant' | 'system';
@@ -263,6 +252,9 @@ function generateUUID() {
 }
 
 function Chat() {
+  const { navigate } = useNavigation();
+  const params = useParams();
+  
   const [message, setMessage] = useState('');
   const [selectedUser, setSelectedUser] = useState('Marcus');
   const [timeRemaining, setTimeRemaining] = useState(1200); // Изменено с 300 секунд (5 минут) на 1200 секунд (20 минут)
@@ -316,16 +308,89 @@ function Chat() {
     { name: 'Alex', status: 'Online', lastMessage: 'Проверяет границы' },
   ];
 
-  const navigate = useNavigate();
+  const [isMounted, setIsMounted] = useState(false);
+  
+  // Состояние для хранения функций навигации и параметров
+  const [navigation, setNavigation] = useState<{
+    navigate: ((path: string) => void) | null;
+    params: { sessionId?: string } | null;
+  }>({
+    navigate: null,
+    params: null
+  });
+  
+  // Получаем sessionId из параметров URL или DOM-элемента (для совместимости с Next.js)
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showImageGallery, setShowImageGallery] = useState(false);
   
-  // Получаем sessionId из параметров URL
-  const { sessionId: urlSessionId } = useParams<{ sessionId: string }>();
+  // Устанавливаем флаг монтирования компонента
+  useEffect(() => {
+    setIsMounted(true);
+    
+    // Получение параметров URL
+    if (typeof window !== 'undefined') {
+      try {
+        // Импортируем динамически для избежания ошибок SSR
+        import('react-router-dom').then(({ useNavigate, useParams }) => {
+          // Создаем компонент для вызова хуков
+          const RouterHookComponent = () => {
+            try {
+              const navigate = useNavigate();
+              const params = useParams<{ sessionId: string }>();
+              
+              // Сохраняем результаты в состояние
+              useEffect(() => {
+                setNavigation({
+                  navigate,
+                  params
+                });
+              }, [navigate, params]);
+              
+              return null;
+            } catch (error) {
+              console.error('Failed to use React Router hooks', error);
+              return null;
+            }
+          };
+          
+          // Сохраняем компонент для использования в JSX
+          setRouterHookComponent(() => RouterHookComponent);
+        }).catch(error => {
+          console.error('Failed to import react-router-dom', error);
+        });
+      } catch (e) {
+        console.error('Error setting up router', e);
+      }
+    }
+    
+    // Получаем sessionId из DOM-элемента для Next.js
+    if (typeof window !== 'undefined') {
+      const chatContainer = document.getElementById('chat-container');
+      if (chatContainer) {
+        const sessionIdFromData = chatContainer.getAttribute('data-session-id');
+        if (sessionIdFromData) {
+          setSessionId(sessionIdFromData);
+        }
+      }
+    }
+  }, []);
+  
+  // Компонент для безопасного использования хуков React Router
+  const [RouterHookComponent, setRouterHookComponent] = useState<React.ComponentType | null>(null);
+  
+  // Обновляем sessionId при изменении параметров маршрута
+  useEffect(() => {
+    if (navigation.params && navigation.params.sessionId) {
+      setSessionId(navigation.params.sessionId);
+    }
+  }, [navigation.params]);
 
   // Load custom images from localStorage on component mount
   useEffect(() => {
+    if (!isMounted) return;
+    
     const savedImages = localStorage.getItem('customImages');
     if (savedImages) {
       try {
@@ -334,14 +399,16 @@ function Chat() {
         console.error('Error loading custom images:', error);
       }
     }
-  }, []);
+  }, [isMounted]);
 
   // Save custom images to localStorage whenever they change
   useEffect(() => {
+    if (!isMounted) return;
+    
     if (customImages.length > 0) {
       localStorage.setItem('customImages', JSON.stringify(customImages));
     }
-  }, [customImages]);
+  }, [customImages, isMounted]);
 
   useEffect(() => {
     const markMessagesAsRead = () => {
@@ -443,11 +510,11 @@ function Chat() {
 
   // Создаем новую сессию тестирования при загрузке компонента
   useEffect(() => {
-    // Добавляем флаг для предотвращения дублирования инициализаций
+    if (!isMounted) return;
+    
     let isInitializing = false;
     
     const initTestSession = async () => {
-      // Если уже идет инициализация, выходим
       if (isInitializing) return;
       isInitializing = true;
       
@@ -455,19 +522,19 @@ function Chat() {
         console.log('🔄 Starting test session initialization');
         
         // Проверяем наличие ID сессии в URL
-        if (urlSessionId) {
-          console.log('🔍 Found sessionId in URL:', urlSessionId);
+        if (sessionId) {
+          console.log('🔍 Found sessionId in URL:', sessionId);
           try {
             // Проверяем, существует ли сессия с таким ID
-            const session = await getTestSession(urlSessionId);
+            const session = await testSessionService.getById(sessionId);
             
             if (session && !session.completed) {
-              console.log('✅ Using session from URL parameter:', urlSessionId);
-              setTestSessionId(urlSessionId);
-              sessionStorage.setItem('currentTestSessionId', urlSessionId);
+              console.log('✅ Using session from URL parameter:', sessionId);
+              setTestSessionId(sessionId);
+              sessionStorage.setItem('currentTestSessionId', sessionId);
               
               // Проверяем, существуют ли чаты для этой сессии
-              const sessionChats = await getTestSessionChats(urlSessionId);
+              const sessionChats = await chatService.getMessages(sessionId);
               
               if (sessionChats && sessionChats.length > 0) {
                 console.log('📋 Session has', sessionChats.length, 'chats');
@@ -477,12 +544,12 @@ function Chat() {
                 console.warn('⚠️ Session from URL has no chats, will proceed to create new session');
               }
             } else if (session && session.completed) {
-              console.warn('⚠️ Session from URL is already completed:', urlSessionId);
+              console.warn('⚠️ Session from URL is already completed:', sessionId);
               // Если сессия завершена, перенаправляем на результаты
-              navigate(`/test-results/${urlSessionId}`);
+              navigate(`/test-results/${sessionId}`);
               return;
             } else {
-              console.warn('⚠️ Session from URL not found:', urlSessionId);
+              console.warn('⚠️ Session from URL not found:', sessionId);
             }
           } catch (error) {
             console.error('❌ Error checking session from URL:', error);
@@ -496,7 +563,7 @@ function Chat() {
           console.log('🔍 Found existing session ID in storage:', existingSessionId);
           // Проверяем, существуют ли чаты для этой сессии
           try {
-            const existingChats = await getTestSessionChats(existingSessionId);
+            const existingChats = await chatService.getMessages(existingSessionId);
             console.log('📋 Existing chats found:', existingChats.length, 'with messages:',
               existingChats.map(c => ({ chatNumber: c.chat_number, messageCount: c.messages?.length || 0 })));
             
@@ -509,7 +576,7 @@ function Chat() {
               // Проверяем, что сессия принадлежит текущему соискателю
               // Получаем данные о сессии
               try {
-                const session = await getTestSession(existingSessionId);
+                const session = await testSessionService.getById(existingSessionId);
                 console.log('🔍 Session details:', {
                   id: session.id,
                   employeeId: session.employee_id,
@@ -564,129 +631,27 @@ function Chat() {
         
         console.log('Looking for employee with ID:', candidateId);
         
-        // Получаем список сотрудников
-        const employees = await getEmployees();
-        if (!employees || employees.length === 0) {
-          throw new Error('No employees found');
-        }
-        
-        // Ищем соискателя по ID
-        const targetEmployee = employees.find(e => e.id === candidateId);
-        
-        if (!targetEmployee) {
-          console.warn('⚠️ Employee not found by ID:', candidateId);
-          console.log('👥 Found employees:', employees.map(e => ({ id: e.id, name: e.first_name })));
-          console.log('⚙️ Using first employee instead:', employees[0].id);
+        // Создаем новую сессию через API
+        try {
+          const sessionResponse = await testSessionService.create(candidateId);
           
-          try {
-          // Если не найден, используем первого сотрудника
-          const session = await createTestSession(employees[0].id);
-            
-            // Проверяем, что сессия создана успешно
-            if (!session || !session.id) {
-              throw new Error('Failed to create test session: No session ID returned');
-            }
-            
-            // Проверяем и устанавливаем ID сессии
+          if (!sessionResponse.success || !sessionResponse.session) {
+            throw new Error('Failed to create test session');
+          }
+          
+          const session = sessionResponse.session;
           setTestSessionId(session.id);
           sessionStorage.setItem('currentTestSessionId', session.id);
-            console.log('✅ Test session created and saved to sessionStorage:', session.id);
-            
-            // Обязательно проверяем, что чаты созданы
-            if (session.chats && session.chats.length > 0) {
-              console.log('📋 Session created with chats:', {
-                sessionId: session.id,
-                employeeId: session.employee_id,
-                chatCount: session.chats.length,
-                chatNumbers: session.chats.map(c => c.chat_number)
-              });
-        } else {
-              console.warn('⚠️ Session created without chats, fetching chats...');
-              
-              // Принудительно получаем чаты
-              const sessionChats = await getTestSessionChats(session.id);
-              if (sessionChats && sessionChats.length > 0) {
-                console.log('✅ Successfully fetched chats for new session:', {
-                  sessionId: session.id,
-                  chatCount: sessionChats.length,
-                  chatIds: sessionChats.map(c => c.id)
-                });
-              } else {
-                console.error('❌ No chats found for new session, this will cause issues!');
-              }
-            }
-          } catch (sessionError) {
-            console.error('❌ Error creating session for first employee:', sessionError);
-            // Пытаемся создать хотя бы какую-то сессию
-            for (const emp of employees) {
-              try {
-                console.log('🔄 Trying to create session for employee:', emp.id);
-                const fallbackSession = await createTestSession(emp.id);
-                if (fallbackSession && fallbackSession.id) {
-                  setTestSessionId(fallbackSession.id);
-                  sessionStorage.setItem('currentTestSessionId', fallbackSession.id);
-                  console.log('✅ Created fallback session:', fallbackSession.id);
-                  break;
-                }
-              } catch (e) {
-                console.error('❌ Failed to create fallback session for employee:', emp.id);
-              }
-            }
-          }
-        } else {
-          console.log('👤 Found employee:', { 
-            id: targetEmployee.id, 
-            name: targetEmployee.first_name
-          });
+          console.log('✅ Test session created and saved to sessionStorage:', session.id);
           
-          try {
-          // Создаем сессию для найденного сотрудника
-          const session = await createTestSession(targetEmployee.id);
-            
-            // Проверяем, что сессия создана успешно
-            if (!session || !session.id) {
-              throw new Error('Failed to create test session: No session ID returned');
-            }
-            
-          setTestSessionId(session.id);
-            sessionStorage.setItem('currentTestSessionId', session.id);
-            console.log('✅ Test session created and saved to sessionStorage:', session.id);
-          
-          // Проверяем, что сессия создана успешно и содержит чаты
-          if (session.chats && session.chats.length > 0) {
-              console.log('📋 Test session created with chats:', {
-              sessionId: session.id,
-              employeeId: session.employee_id,
-              chatCount: session.chats.length,
-              chatNumbers: session.chats.map(c => c.chat_number)
-            });
-          } else {
-              console.warn('⚠️ Test session created but no chats found:', {
-              sessionId: session.id,
-              employeeId: session.employee_id
-            });
-            
-            // Получаем чаты для созданной сессии
-            try {
-              const sessionChats = await getTestSessionChats(session.id);
-                console.log('📋 Fetched chats for new session:', {
-                sessionId: session.id,
-                chats: sessionChats.map(c => ({ id: c.id, chatNumber: c.chat_number }))
-              });
-            } catch (chatsError) {
-                console.error('❌ Error fetching chats for new session:', chatsError);
-              }
-            }
-          } catch (sessionError) {
-            console.error('❌ Error creating session for employee:', sessionError);
-          }
+          // Сбрасываем информацию о разговорах с Grok при создании новой сессии
+          setUserConversations({});
+        } catch (sessionError) {
+          console.error('❌ Error creating session:', sessionError);
+          throw sessionError;
         }
-        
-        // Сбрасываем информацию о разговорах с Grok при создании новой сессии
-        setUserConversations({});
-        
       } catch (error) {
-        console.error('Error creating test session:', error);
+        console.error('Error in session initialization:', error);
       } finally {
         isInitializing = false;
       }
@@ -694,29 +659,18 @@ function Chat() {
     
     initTestSession();
     
-    // Cleanup function для завершения сессии при закрытии компонента
+    // Очистка при размонтировании компонента
     return () => {
       if (testSessionId) {
         const completeSession = async () => {
           try {
             console.log('⏰ Time expired, completing test session:', testSessionId);
             
-            // Принудительно очищаем кэш сессий перед завершением
-            try {
-              localStorage.removeItem('recent_test_sessions');
-              localStorage.removeItem(`test_session_${testSessionId}`);
-            } catch (e) {
-              // Игнорируем ошибки localStorage
-            }
-            
-            // Завершаем сессию в базе данных
-            const result = await completeTestSession(testSessionId);
+            // Используем API для завершения сессии
+            const result = await testSessionService.complete(testSessionId);
             console.log('✅ Test session completed on time expiration:', result);
             
-            // Задержка для обеспечения синхронизации данных
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            
-            // Запускаем анализ диалогов и сохранение результатов только если это первое завершение
+            // Запускаем анализ диалогов через API
             if (!isSessionComplete) {
               console.log('📊 Starting analysis for session:', testSessionId);
               await analyzeDialogsAndSaveResults(testSessionId);
@@ -724,27 +678,17 @@ function Chat() {
               console.log('ℹ️ Session already analyzed, skipping analysis');
             }
             
-            // Оповещаем пользователя об успешном завершении
             setCalculatingResults(false);
-            console.log('✅ Session completion process finished successfully');
           } catch (error) {
             console.error('❌ Error completing test session:', error);
-            
-            // Повторяем попытку через 3 секунды в случае ошибки
-            console.log('⚠️ Retrying session completion in 3 seconds...');
-            setTimeout(() => {
-              completeSession();
-            }, 3000);
-            
             setCalculatingResults(false);
           }
         };
         
-        // Запускаем процесс завершения сессии
         completeSession();
       }
     };
-  }, []);
+  }, [sessionId, isMounted]);
   
   // Обновляем текущую сессию при смене персонажа
   useEffect(() => {
@@ -787,7 +731,7 @@ function Chat() {
           if (testSessionId) {
             const completeSession = async () => {
               try {
-                await completeTestSession(testSessionId);
+                await testSessionService.complete(testSessionId);
                 console.log('Test session completed on time expiration');
                 
                 // Запускаем анализ диалогов и сохранение результатов только если это первое завершение
@@ -847,7 +791,7 @@ function Chat() {
         if (testSessionId) {
           const completeSession = async () => {
             try {
-              await completeTestSession(testSessionId);
+              await testSessionService.complete(testSessionId);
               console.log('Test session completed after last message');
               
               // Запускаем анализ диалогов и сохранение результатов только если это первое завершение
@@ -1001,19 +945,16 @@ function Chat() {
       // Формируем комментарий к фото, если он есть
       const commentInfo = imageComment ? ` [Комментарий: ${imageComment}]` : '';
 
-      // Сохраняем сообщение пользователя в чат
-      const chatMessage: SupabaseChatMessage = {
-          content: `[Фото ${tempSelectedImage.match(/\/(\d+)\.jpg$/)?.[1] || ''}] [${preloadedImages.find(img => img.url === tempSelectedImage)?.prompt || 'Пользователь отправил изображение'}]${priceInfo}${commentInfo} [модель отправила фото]`,
-        time: new Date().toISOString(),
-        isOwn: true,
-        isRead: true
-      };
+      // Формируем содержимое сообщения с фото
+      const photoMessageContent = `[Фото ${tempSelectedImage.match(/\/(\d+)\.jpg$/)?.[1] || ''}] [${preloadedImages.find(img => img.url === tempSelectedImage)?.prompt || 'Пользователь отправил изображение'}]${priceInfo}${commentInfo} [модель отправила фото]`;
 
-        const updatedChat = await addMessageToTestSession(
-          currentTestSessionId,
-          chatNumber as 1 | 2 | 3 | 4,
-          chatMessage
-        );
+      // Сохраняем сообщение пользователя в чат через API
+      await chatService.sendMessage(
+        currentTestSessionId,
+        photoMessageContent,
+        '', // employeeId пустой, так как мы используем sessionId
+        chatNumber
+      );
 
       // Получаем историю сообщений для текущего пользователя
       const chatHistory = chatHistories[selectedUser];
@@ -1028,7 +969,7 @@ function Chat() {
       
       messagesToSend.push({
         role: 'user',
-          content: `[Фото ${tempSelectedImage.match(/\/(\d+)\.jpg$/)?.[1] || ''}] [${preloadedImages.find(img => img.url === tempSelectedImage)?.prompt || 'Пользователь отправил изображение'}]${priceInfo}${commentInfo} [модель отправила фото]`
+        content: photoMessageContent
       });
 
       // Если это первое сообщение в чате, добавляем системный промпт
@@ -1042,7 +983,8 @@ function Chat() {
       // Получаем данные о существующем разговоре с Grok, если они есть
       const conversationDetails = userConversations[selectedUser];
       
-      const grokResponse = await generateGrokResponse(
+      // Используем grokService вместо прямого вызова generateGrokResponse
+      const grokResponse = await grokService.generateResponse(
         messagesToSend,
         conversationDetails
       );
@@ -1077,18 +1019,12 @@ function Chat() {
         // Имитируем печатание ответа перед его отображением
         await simulateTypingDelay(selectedUser);
         
-        // Сохраняем ответ ассистента в чат
-        const assistantChatMessage: SupabaseChatMessage = {
-          content: grokResponse.response,
-          time: new Date().toISOString(),
-          isOwn: false,
-          isRead: false
-        };
-
-        await addMessageToTestSession(
+        // Сохраняем ответ ассистента в чат через API
+        await chatService.sendMessage(
           currentTestSessionId,
-          chatNumber as 1 | 2 | 3 | 4,
-          assistantChatMessage
+          grokResponse.response,
+          '', // employeeId пустой, так как мы используем sessionId
+          chatNumber,
         );
 
         const assistantMessage = {
@@ -1251,7 +1187,7 @@ function Chat() {
   const handleGoodbye = () => {
     console.log('Completing test session and redirecting to completion page');
     // Перенаправляем на страницу завершения теста вместо результатов
-    navigate('/test-completed');
+    navigate(`/test-completed`);
   };
 
   // Отслеживание состояния анализа для каждой сессии
@@ -1272,90 +1208,14 @@ function Chat() {
     try {
       console.log('Starting dialog analysis for session:', sessionId);
       
-      // Получаем информацию о сессии для привязки к сотруднику
-      const session = await getTestSession(sessionId);
-      
-      if (!session) {
-        throw new Error('Session not found');
-      }
-      
-      // Генерируем промпт для анализа
-      const prompt = await generateAnalysisPrompt(sessionId);
-      console.log('Analysis prompt generated, length:', prompt.length);
-      
-      // Отправляем на анализ в Grok
-      console.log('Sending prompt to Grok API...');
-      const analysisResponse = await analyzeDialogs(prompt);
-      console.log('Got response from Grok API:', analysisResponse);
-      
-      if (analysisResponse.error) {
-        console.error('Analysis API error:', analysisResponse.error);
-        throw new Error(`Analysis failed: ${analysisResponse.error}`);
-      }
-      
-      console.log('Raw analysis response:', analysisResponse);
-      
-      let result: DialogAnalysisResult | null = null;
-      
-      // Извлекаем результат анализа
-      if (analysisResponse.analysisResult) {
-        console.log('Using pre-parsed analysis result');
-        result = analysisResponse.analysisResult;
-      } else if (typeof analysisResponse.response === 'string') {
-        console.log('Trying to parse from response string, length:', analysisResponse.response.length);
-        try {
-          // Пытаемся извлечь JSON из текстового ответа
-          const jsonMatch = analysisResponse.response.match(/\{[\s\S]*\}/);
-          if (jsonMatch) {
-            const jsonStr = jsonMatch[0];
-            console.log('Extracted JSON string:', jsonStr.substring(0, 100) + '...');
-            result = JSON.parse(jsonStr);
-            console.log('Successfully parsed JSON result');
-          } else {
-            console.warn('No JSON pattern found in response');
-          }
-        } catch (parseError) {
-          console.error('Error parsing analysis response:', parseError);
-        }
-      } else {
-        console.warn('Response does not contain expected data structure:', analysisResponse);
-      }
+      // Используем API для анализа
+      const result = await testResultService.analyze(sessionId, '');  // employeeId получаем на сервере
       
       // Если удалось получить результат анализа
-      if (result) {
+      if (result && result.analysisResult) {
         // Сохраняем результат в состоянии
-        setAnalysisResult(result);
+        setAnalysisResult(result.analysisResult);
         setAnalysisComplete(true);
-        
-        // Рассчитываем общий балл (среднее значение по всем метрикам)
-        const metrics = result.dialog_analysis.metrics;
-        const scores = [
-          metrics.engagement.score,
-          metrics.charm_and_tone.score,
-          metrics.creativity.score,
-          metrics.adaptability.score,
-          metrics.self_promotion.score,
-          metrics.pricing_policy.score // Включаем в расчёт, но не сохраняем в БД
-        ];
-        
-        const overallScore = scores.reduce((sum, score) => sum + score, 0) / scores.length;
-        
-        // Сохраняем результат в базе данных
-        console.log('Saving analysis results to database...');
-        await saveTestResult({
-          test_session_id: sessionId,
-          employee_id: session.employee_id,
-          raw_prompt: prompt,
-          analysis_result: result,
-          engagement_score: metrics.engagement.score,
-          charm_tone_score: metrics.charm_and_tone.score,
-          creativity_score: metrics.creativity.score,
-          adaptability_score: metrics.adaptability.score,
-          self_promotion_score: metrics.self_promotion.score,
-          // pricing_policy_score не сохраняем, так как колонки нет в БД
-          overall_score: overallScore
-        });
-        
         console.log('Analysis completed and results saved');
       } else {
         console.error('No valid analysis result found in response');
@@ -1379,20 +1239,20 @@ function Chat() {
         setAnalysisResult(defaultResult);
         setAnalysisComplete(true);
         
-        // Даже если анализ не удался, сохраняем базовую запись в БД
+        // Даже если анализ не удался, сохраняем базовую запись через API
         try {
           console.log('Saving basic test result without analysis data');
-          await saveTestResult({
+          await testResultService.save({
             test_session_id: sessionId,
-            employee_id: session.employee_id,
-            raw_prompt: prompt,
+            // Не указываем employee_id, он будет определен на сервере
+            raw_prompt: "Анализ не выполнен",
             analysis_result: defaultResult,
             engagement_score: 3.0,
-            charm_tone_score: 3.0,
+            charm_score: 3.0,
             creativity_score: 3.0,
             adaptability_score: 3.0,
             self_promotion_score: 3.0,
-            overall_score: 3.0
+            pricing_policy_score: 3.0
           });
           console.log('Created basic test result record with default data');
         } catch (saveError) {
@@ -1433,87 +1293,32 @@ function Chat() {
   // Функция для отправки обычных текстовых сообщений
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Проверяем, есть ли выбранное изображение
-    if (selectedImage) {
-      // Сохраняем цену и комментарий для выбранного изображения
-      const price = selectedPrice || 'FREE';
-      const comment = selectedImageComment || '';
-      
-      // Создаем объект сообщения с изображением и ценой
-      const newImageMessage: Message = {
-        id: `user-${Date.now()}`,
-        sender: 'You',
-        content: '',
-        time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true }),
-        isOwn: true,
-        isRead: true,
-        imageUrl: selectedImage,
-        price: price,
-        imageComment: comment // Добавляем комментарий
-      };
-      
-      // Добавляем сообщение в историю чата
-      setChatHistories(prev => ({
-        ...prev,
-        [selectedUser]: [...prev[selectedUser], newImageMessage]
-      }));
-      
-      // Сбрасываем выбранное изображение и цену
-      setSelectedImage(null);
-      setSelectedPrice('FREE');
-      setSelectedImageComment(''); // Сбрасываем комментарий
-    }
-
     if (!message.trim()) return;
-
-    const candidateData = JSON.parse(sessionStorage.getItem('candidateData') || '{}');
-    const currentTestSessionId = sessionStorage.getItem('currentTestSessionId');
-
-    if (!candidateData.userId || !currentTestSessionId) {
-      console.error('Missing user data or test session');
+    
+    // Получаем ID текущей тестовой сессии из sessionStorage
+    let currentTestSessionId = sessionStorage.getItem('currentTestSessionId');
+    
+    // Проверяем существование тестовой сессии
+    if (!currentTestSessionId) {
+      console.error('No test session ID found in storage. Please reload the page to create a new session.');
       return;
-    }
-
-    let messageContent = message;
-    let imageInfo = null;
-
-    if (selectedImage) {
-      const imageNumber = selectedImage.match(/\/(\d+)\.jpg$/)?.[1] || '';
-      const imagePrompt = preloadedImages.find(img => img.url === selectedImage)?.prompt || '';
-      const priceInfo = selectedPrice ? ` [Цена: ${selectedPrice}]` : '';
-      const commentInfo = selectedImageComment ? ` [Комментарий: ${selectedImageComment}]` : '';
-      
-      imageInfo = {
-        url: selectedImage,
-        price: selectedPrice,
-        comment: selectedImageComment
-      };
-      
-      messageContent = `[Фото ${imageNumber}] [${imagePrompt}]${priceInfo}${commentInfo}`;
     }
 
     const newMessage = {
       id: `user-${Date.now()}`,
       sender: 'You',
-      content: messageContent,
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      content: message,
+      time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true }),
       isOwn: true,
-      isRead: true,
-      ...(imageInfo && { 
-        imageUrl: imageInfo.url, 
-        price: imageInfo.price,
-        imageComment: imageInfo.comment 
-      })
+      isRead: true
     };
 
     setChatHistories(prev => ({
       ...prev,
       [selectedUser]: [...prev[selectedUser], newMessage]
     }));
-
+    
     setMessage('');
-    setSelectedImage(null);
     setLoadingStates(prev => ({ ...prev, [selectedUser]: true }));
 
     try {
@@ -1523,36 +1328,27 @@ function Chat() {
         throw new Error('Invalid chat number');
       }
 
-      // Сохраняем сообщение пользователя в базу данных
-      const chatMessage: SupabaseChatMessage = {
-        content: messageContent,
-        time: new Date().toISOString(),
-        isOwn: true,
-        isRead: true
-      };
-
-      const updatedChat = await addMessageToTestSession(
+      // Сохраняем сообщение пользователя в чат через API
+      await chatService.sendMessage(
         currentTestSessionId,
-        chatNumber as 1 | 2 | 3 | 4,
-        chatMessage
+        message,
+        '', // employeeId пустой, так как мы используем sessionId
+        chatNumber
       );
 
       // Получаем историю сообщений для текущего пользователя
       const chatHistory = chatHistories[selectedUser];
       
-      // Создаем массив сообщений для отправки в API
+      // Создаем массив сообщений для отправки в API Grok
       let messagesToSend = chatHistory.map(msg => ({
         role: msg.isOwn ? 'user' : 'assistant',
-        content: msg.content
+        content: msg.imageUrl 
+          ? `[Фото ${msg.imageUrl.match(/\/(\d+)\.jpg$/)?.[1] || ''}] [${preloadedImages.find(img => img.url === msg.imageUrl)?.prompt || 'Пользователь отправил изображение'}]${msg.price ? ` [Цена: ${msg.price}]` : ''} [модель отправила фото]` 
+          : msg.content
       })) as { role: 'user' | 'assistant' | 'system', content: string }[];
-      
-      messagesToSend.push({
-        role: 'user',
-        content: messageContent
-      });
 
       // Если это первое сообщение в чате, добавляем системный промпт
-      if (chatHistory.length === 0) {
+      if (chatHistory.length === 1) { // Проверка на 1, так как мы уже добавили сообщение пользователя в chatHistory
         messagesToSend.unshift({
           role: 'system',
           content: userPrompts[selectedUser]
@@ -1562,7 +1358,8 @@ function Chat() {
       // Получаем данные о существующем разговоре с Grok, если они есть
       const conversationDetails = userConversations[selectedUser];
       
-      const grokResponse = await generateGrokResponse(
+      // Используем grokService вместо прямого вызова generateGrokResponse
+      const grokResponse = await grokService.generateResponse(
         messagesToSend,
         conversationDetails
       );
@@ -1581,8 +1378,8 @@ function Chat() {
         const errorMessage = {
           id: `error-${Date.now()}`,
           sender: selectedUser,
-          content: `Ошибка: ${grokResponse.error}`,
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          content: `Ошибка от бота: ${grokResponse.error}`,
+          time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true }),
           isOwn: false,
           isRead: false,
           error: true,
@@ -1597,44 +1394,19 @@ function Chat() {
         // Имитируем печатание ответа перед его отображением
         await simulateTypingDelay(selectedUser);
         
-        // Проверяем, содержит ли ответ теги [Купил] или [Не купил]
-        const responseContent = grokResponse.response;
-        console.log('Оригинальный ответ:', responseContent);
-        
-        const boughtTag = responseContent.includes('[Bought]');
-        const notBoughtTag = responseContent.includes('[Not Bought]');
-        
-        console.log('Найдены теги:', { boughtTag, notBoughtTag });
-        
-        // Удаляем все теги в квадратных скобках из отображаемого текста
-        let cleanResponse = responseContent
-          .replace(/\[\s*Bought\s*\]/gi, '')  // Более точное удаление тега [Bought]
-          .replace(/\[\s*Not\s*Bought\s*\]/gi, '')  // Более точное удаление тега [Not Bought]
-          .replace(/\[[^\]]*\]/g, '')  // Удаляем все оставшиеся теги в формате [текст]
-          .replace(/\s+/g, ' ')  // Заменяем множественные пробелы на один
-          .trim();
-        
-        console.log('Очищенный ответ:', cleanResponse);
-        
-        // Сохраняем ответ ассистента в чат
-        const assistantChatMessage: SupabaseChatMessage = {
-          content: grokResponse.response, // Сохраняем оригинальный ответ в базе данных
-          time: new Date().toISOString(),
-          isOwn: false,
-          isRead: false
-        };
-
-        await addMessageToTestSession(
+        // Сохраняем ответ ассистента в чат через API
+        await chatService.sendMessage(
           currentTestSessionId,
-          chatNumber as 1 | 2 | 3 | 4,
-          assistantChatMessage
+          grokResponse.response,
+          '', // employeeId пустой, так как мы используем sessionId
+          chatNumber
         );
 
         const assistantMessage = {
           id: `assistant-${Date.now()}`,
           sender: selectedUser,
-          content: cleanResponse, // Используем очищенный ответ без тегов
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          content: grokResponse.response,
+          time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true }),
           isOwn: false,
           isRead: false
         };
@@ -1643,57 +1415,9 @@ function Chat() {
           ...prev,
           [selectedUser]: [...prev[selectedUser], assistantMessage]
         }));
-        
-        // Если ответ содержит тег [Bought] и в сообщении перед ним было фото с ценой,
-        // обновляем статус фото на "bought"
-        if (boughtTag) {
-          console.log('Обнаружен тег [Bought], ищем последнее фото пользователя...');
-          
-          // Находим последнее сообщение с фотографией от пользователя
-          const chatHistoryReversed = [...chatHistory].reverse();
-          console.log('История чата (в обратном порядке):', chatHistoryReversed);
-          
-          const lastUserPhotoMsgIndex = chatHistoryReversed.findIndex(
-            msg => msg.isOwn && (msg.imageUrl || (msg.content && msg.content.includes('[Фото')))
-          );
-          
-          console.log('Индекс последнего фото (в обратном порядке):', lastUserPhotoMsgIndex);
-          
-          if (lastUserPhotoMsgIndex !== -1) {
-            const realIndex = chatHistory.length - 1 - lastUserPhotoMsgIndex;
-            const photoMsg = chatHistory[realIndex];
-            
-            console.log('Найдено фото для отметки как купленное:', {
-              index: realIndex,
-              photoMsg,
-              hasPrice: Boolean(photoMsg.price),
-              priceValue: photoMsg.price
-            });
-            
-            // Обновляем статус фото на "bought"
-            setChatHistories(prev => {
-              const newHistory = [...prev[selectedUser]];
-              // Только если цена не равна FREE и не пуста
-              if (photoMsg.price && photoMsg.price !== 'FREE') {
-                console.log('Обновляем статус фото на bought=true');
-                newHistory[realIndex] = {
-                  ...photoMsg,
-                  bought: true // Добавляем флаг, что фото куплено
-                };
-              } else {
-                console.log('Фото не имеет цены или цена FREE, не меняем статус');
-              }
-              return {
-                ...prev,
-                [selectedUser]: newHistory
-              };
-            });
-          } else {
-            console.log('Не найдено подходящего фото для отметки как купленное');
-          }
-        }
       }
 
+      // Обновляем статус чата
       setUserStatus(prev => ({
         ...prev,
         [selectedUser]: {
@@ -1702,13 +1426,21 @@ function Chat() {
           lastMessageId: `assistant-${Date.now()}`
         }
       }));
+      
+      // Обновляем статус через API
+      await chatService.updateStatus(
+        currentTestSessionId,
+        chatNumber,
+        { isTyping: false }
+      );
     } catch (error) {
-      console.error('Error sending message:', error);
+      console.error('Error in message sending:', error);
+      
       const errorMessage = {
         id: `error-${Date.now()}`,
         sender: selectedUser,
         content: 'Произошла ошибка при отправке сообщения. Пожалуйста, попробуйте еще раз.',
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true }),
         isOwn: false,
         isRead: false,
         error: true
@@ -1794,6 +1526,26 @@ function Chat() {
   // Обработчик для удаления пользовательского изображения
   const handleDeleteCustomImage = (imageId: string) => {
     setCustomImages(prev => prev.filter(img => img.id !== imageId));
+  };
+
+  // Безопасное перенаправление, работающее как с react-router, так и с Next.js
+  const safeNavigate = (path: string) => {
+    if (!isMounted) return;
+    
+    navigate(path);
+  };
+
+  // Если компонент не смонтирован, показываем заглушку
+  if (!isMounted) {
+    return <div className="flex min-h-screen items-center justify-center">
+      <p>Загрузка чата...</p>
+    </div>;
+  }
+
+  // Функция для завершения теста и перехода к результатам
+  const finishTest = () => {
+    console.log("Finishing test and navigating to completion page");
+    navigate(`/test-completed`);
   };
 
   return (
@@ -2401,9 +2153,9 @@ function Chat() {
               </div>
               <button 
                 type="submit"
-                disabled={!message.trim() && !selectedImage}
+                disabled={!message.trim()}
                 className={`w-10 h-10 rounded-full flex items-center justify-center transition-opacity ${
-                  !message.trim() && !selectedImage
+                  !message.trim()
                     ? 'bg-gray-500 cursor-not-allowed'
                     : 'bg-gradient-to-r from-pink-500 to-purple-500 hover:opacity-90'
                 }`}

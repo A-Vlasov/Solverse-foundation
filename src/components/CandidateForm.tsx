@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import React, { useState, useEffect, useRef } from 'react';
+import { useNavigation, useLocation } from '../../app/components/SimpleNavigation';
 import { UserCircle, FileText, ArrowRight, Clock, AlertCircle } from 'lucide-react';
 import { saveCandidateForm, validateCandidateToken, getEmployee, getCandidateForm } from '../lib/supabase';
 
@@ -19,17 +19,24 @@ function CandidateForm() {
   const [isLoading, setIsLoading] = useState(true);
   const [tokenError, setTokenError] = useState<string | null>(null);
   
-  const navigate = useNavigate();
+  // Используем ref для отслеживания, был ли уже выполнен редирект
+  const redirected = useRef(false);
+  
+  const { navigate } = useNavigation();
   const location = useLocation();
 
   useEffect(() => {
+    // Предотвращаем повторный запуск эффекта
+    if (redirected.current) return;
+    
     const validateTokenAndLoadData = async () => {
       try {
         setIsLoading(true);
         
-        // Получаем токен из URL параметров
-        const queryParams = new URLSearchParams(location.search);
-        const token = queryParams.get('token');
+        // Получаем токен из URL параметров непосредственно из window.location
+        // так как наш хук useLocation возвращает только pathname
+        const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
+        const token = searchParams.get('token');
         
         if (!token) {
           console.error('No token provided in URL');
@@ -39,45 +46,52 @@ function CandidateForm() {
         }
         
         // Проверяем данные из sessionStorage
-        const savedData = JSON.parse(sessionStorage.getItem('candidateData') || '{}');
-        
-        // Если в sessionStorage уже есть данные с таким же токеном и userId, используем их
-        if (savedData.token === token && savedData.userId) {
-          console.log('Using cached session data for token:', token);
+        try {
+          const savedData = JSON.parse(sessionStorage.getItem('candidateData') || '{}');
           
-          // Проверяем, заполнена ли уже форма
-          if (savedData.formCompleted) {
-            console.log('Form already completed, redirecting to test info');
-            navigate('/test-info');
-            return;
+          // Если в sessionStorage уже есть данные с таким же токеном и userId, используем их
+          if (savedData.token === token && savedData.userId) {
+            console.log('Using cached session data for token:', token);
+            
+            // Проверяем, заполнена ли уже форма
+            if (savedData.formCompleted) {
+              console.log('Form already completed, redirecting to test info');
+              redirected.current = true; // Устанавливаем флаг, чтобы предотвратить повторное перенаправление
+              navigate('/test-info');
+              return;
+            }
+            
+            // Загружаем данные сотрудника
+            await loadEmployeeData(savedData.userId);
+          } else {
+            // Иначе проверяем токен заново
+            const employeeId = await validateCandidateToken(token);
+            
+            if (!employeeId) {
+              console.error('Invalid or expired token:', token);
+              setTokenError('Недействительный или истекший токен доступа. Пожалуйста, запросите новую ссылку.');
+              setIsLoading(false);
+              return;
+            }
+            
+            console.log('Valid token for employee ID:', employeeId);
+            
+            // Сохраняем ID сотрудника и токен в sessionStorage
+            const candidateData = {
+              userId: employeeId,
+              token: token
+            };
+            
+            sessionStorage.setItem('candidateData', JSON.stringify(candidateData));
+            console.log('Candidate data saved to sessionStorage:', candidateData);
+            
+            // Загружаем данные сотрудника
+            await loadEmployeeData(employeeId);
           }
-          
-          // Загружаем данные сотрудника
-          await loadEmployeeData(savedData.userId);
-        } else {
-          // Иначе проверяем токен заново
-          const employeeId = await validateCandidateToken(token);
-          
-          if (!employeeId) {
-            console.error('Invalid or expired token:', token);
-            setTokenError('Недействительный или истекший токен доступа. Пожалуйста, запросите новую ссылку.');
-            setIsLoading(false);
-            return;
-          }
-          
-          console.log('Valid token for employee ID:', employeeId);
-          
-          // Сохраняем ID сотрудника и токен в sessionStorage
-          const candidateData = {
-            userId: employeeId,
-            token: token
-          };
-          
-          sessionStorage.setItem('candidateData', JSON.stringify(candidateData));
-          console.log('Candidate data saved to sessionStorage:', candidateData);
-          
-          // Загружаем данные сотрудника
-          await loadEmployeeData(employeeId);
+        } catch (e) {
+          console.error('Error parsing sessionStorage data:', e);
+          setTokenError('Ошибка данных. Пожалуйста, очистите куки и кэш браузера и попробуйте снова.');
+          setIsLoading(false);
         }
       } catch (error) {
         console.error('Error validating token:', error);
@@ -117,6 +131,7 @@ function CandidateForm() {
           console.log('Candidate data updated in sessionStorage:', updatedData);
           
           // Перенаправляем на страницу с информацией о тесте
+          redirected.current = true; // Устанавливаем флаг, чтобы предотвратить повторное перенаправление
           navigate('/test-info');
           return;
         }
@@ -143,7 +158,7 @@ function CandidateForm() {
     };
     
     validateTokenAndLoadData();
-  }, [location.search, navigate]);
+  }, []); // Удаляем navigate из зависимостей, чтобы предотвратить бесконечный цикл
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
@@ -185,6 +200,9 @@ function CandidateForm() {
       return;
     }
     
+    // Проверяем, был ли уже выполнен редирект
+    if (redirected.current) return;
+    
     try {
       setIsSubmitting(true);
       setSubmitError(null);
@@ -212,6 +230,9 @@ function CandidateForm() {
       
       sessionStorage.setItem('candidateData', JSON.stringify(updatedCandidateData));
       console.log('Updated candidate data in sessionStorage:', updatedCandidateData);
+      
+      // Устанавливаем флаг, что редирект выполнен
+      redirected.current = true;
       
       // Перенаправляем на страницу с тестовой информацией
       navigate('/test-info');

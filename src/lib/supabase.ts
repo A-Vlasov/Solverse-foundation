@@ -1,13 +1,41 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+// Обновляем доступ к переменным окружения на формат Next.js
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error('Missing Supabase environment variables');
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+console.log('Initializing Supabase client with URL:', supabaseUrl);
+
+// Создаем клиента с расширенными опциями
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    autoRefreshToken: true,
+    persistSession: true
+  },
+  global: {
+    fetch: fetch.bind(globalThis)
+  }
+});
+
+// Проверяем соединение при инициализации
+(async () => {
+  if (typeof window !== 'undefined') {
+    try {
+      const { data, error } = await supabase.from('admin_users').select('count').limit(1);
+      if (error) {
+        console.error('Supabase initialization error:', error);
+      } else {
+        console.log('Supabase initialized successfully');
+      }
+    } catch (err) {
+      console.error('Error during Supabase initialization:', err);
+    }
+  }
+})();
 
 export interface Employee {
   id: string;
@@ -1579,5 +1607,41 @@ export async function getCandidateForm(employeeId: string) {
   } catch (error) {
     console.error('Exception in getCandidateForm:', error);
     return null;
+  }
+}
+
+// Функция для обновления статуса чата (печатание, прочитано и т.д.)
+export async function updateChatStatus(sessionId: string, chatNumber: 1 | 2 | 3 | 4, status: { isTyping?: boolean, unreadCount?: number }) {
+  try {
+    const session = await getTestSession(sessionId);
+    
+    if (!session) {
+      throw new Error('Сессия не найдена');
+    }
+    
+    if (session.completed) {
+      throw new Error('Невозможно обновить статус для завершенной сессии');
+    }
+    
+    // В зависимости от реализации базы данных, здесь нужно будет обновить статус чата
+    // Например, можно использовать таблицу chat_status или добавить метаданные к сессии
+    
+    // Пример реализации (нужно адаптировать под вашу структуру данных)
+    const { data, error } = await supabase
+      .from('test_sessions')
+      .update({
+        [`chat_${chatNumber}_status`]: status
+      })
+      .eq('id', sessionId)
+      .select();
+    
+    if (error) {
+      throw error;
+    }
+    
+    return data?.[0] || null;
+  } catch (error) {
+    console.error('Error updating chat status:', error);
+    throw error;
   }
 }

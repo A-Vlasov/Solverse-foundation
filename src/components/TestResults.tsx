@@ -22,8 +22,25 @@ import {
 } from '../lib/supabase';
 
 function TestResults() {
-  const { sessionId } = useParams<{ sessionId: string }>();
-  const navigate = useNavigate();
+  // Используем безопасный подход к получению параметров и навигации
+  const [isMounted, setIsMounted] = useState(false);
+  const [sessionIdFromDOM, setSessionIdFromDOM] = useState<string | null>(null);
+  
+  // Объявляем переменные без инициализации хуками react-router-dom
+  let sessionIdFromRouter: string | undefined;
+  let navigateFunction: any;
+  
+  // Безопасно инициализируем на клиенте
+  if (typeof window !== 'undefined') {
+    try {
+      const params = useParams<{ sessionId: string }>();
+      sessionIdFromRouter = params.sessionId;
+      navigateFunction = useNavigate();
+    } catch (e) {
+      // Игнорируем ошибку, если react-router-dom не доступен
+      console.log('React Router hooks not available');
+    }
+  }
   
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -31,14 +48,28 @@ function TestResults() {
   const [employeeName, setEmployeeName] = useState('');
   const [employeeId, setEmployeeId] = useState('');
   
+  // Устанавливаем флаг монтирования и получаем sessionId из DOM
   useEffect(() => {
-    const fetchData = async () => {
-      if (!sessionId) {
-        setError('Не указан ID сессии');
-        setLoading(false);
-        return;
+    setIsMounted(true);
+    
+    if (typeof window !== 'undefined') {
+      const container = document.getElementById('test-results-container');
+      if (container) {
+        const id = container.getAttribute('data-session-id');
+        if (id) {
+          setSessionIdFromDOM(id);
+        }
       }
-      
+    }
+  }, []);
+  
+  // Получаем актуальный sessionId с приоритетом из DOM для Next.js
+  const sessionId = sessionIdFromDOM || sessionIdFromRouter;
+  
+  useEffect(() => {
+    if (!isMounted || !sessionId) return;
+    
+    const fetchData = async () => {
       try {
         // Загружаем результаты тестирования
         const result = await getTestResultForSession(sessionId);
@@ -71,7 +102,7 @@ function TestResults() {
     };
 
     fetchData();
-  }, [sessionId]);
+  }, [sessionId, isMounted]);
   
   // Функция для расчёта средней оценки на основе всех метрик
   const calculateOverallScore = (metrics: DialogAnalysisResult['dialog_analysis']['metrics'] | undefined): number => {
@@ -110,10 +141,17 @@ function TestResults() {
   const analysis = testResult?.analysis_result?.dialog_analysis;
   
   const handleBackClick = () => {
-    navigate('/admin');
+    if (typeof window !== 'undefined') {
+      if (navigateFunction) {
+        navigateFunction('/admin');
+      } else {
+        window.location.href = '/admin';
+      }
+    }
   };
   
-  if (loading) {
+  // Показываем загрузчик, если компонент еще не смонтирован
+  if (!isMounted || loading) {
     return (
       <div className="min-h-screen bg-[#1a1a1a] text-gray-100 p-6 flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-pink-500"></div>

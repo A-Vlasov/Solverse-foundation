@@ -1,71 +1,118 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import useAuth from '../hooks/useAuth';
-import { supabase } from '../lib/supabase';
-import CryptoJS from 'crypto-js';
 
 export default function Login() {
   const { login, isLoggedIn, userRole } = useAuth();
-  const navigate = useNavigate();
+  const [isMounted, setIsMounted] = useState(false);
+  
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [debugInfo, setDebugInfo] = useState<string>('');
+  
+  // Инициализируем только на клиенте
+  useEffect(() => {
+    setIsMounted(true);
+    
+    // Проверка подключения к API
+    const checkConnection = async () => {
+      try {
+        const response = await fetch('/api/auth');
+        const data = await response.json();
+        
+        if (response.ok) {
+          console.log('API connection successful');
+          setDebugInfo(prev => prev + '\nAPI connection successful');
+        } else {
+          console.error('API connection error');
+          setDebugInfo(prev => prev + '\nAPI connection error: ' + data.error);
+        }
+      } catch (err) {
+        console.error('Error checking API connection:', err);
+        setDebugInfo(prev => prev + `\nError checking API: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    };
+    
+    checkConnection();
+  }, []);
   
   // Если пользователь уже авторизован, перенаправляем на админ-панель
   useEffect(() => {
-    const isAdmin = localStorage.getItem('isAdmin') === 'true';
+    if (!isMounted) return;
+    
+    const isAdmin = typeof window !== 'undefined' && localStorage.getItem('isAdmin') === 'true';
     if (isLoggedIn && isAdmin && userRole === 'admin') {
-      navigate('/admin');
+      console.log('User already logged in, redirecting to admin');
+      setDebugInfo(prev => prev + '\nUser already logged in, redirecting to admin');
+      window.location.href = '/admin';
     }
-  }, [isLoggedIn, userRole, navigate]);
-
-  // Функция для создания MD5 хеша
-  const generateMD5 = (text: string) => {
-    return CryptoJS.MD5(text).toString();
-  };
+  }, [isLoggedIn, userRole, isMounted]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log('Form submitted');
+    setDebugInfo(prev => prev + '\nForm submitted');
     setError('');
     setLoading(true);
 
     try {
       if (!username || !password) {
         setError('Введите имя пользователя и пароль');
+        setDebugInfo(prev => prev + '\nEmpty username or password');
         setLoading(false);
         return;
       }
 
-      // Получаем хеш пароля
-      const passwordHash = generateMD5(password);
+      console.log('Sending auth request to server...');
+      setDebugInfo(prev => prev + '\nSending auth request to server');
+      
+      // Вместо прямого обращения к базе данных, используем серверный API
+      try {
+        const response = await fetch('/api/auth', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ username, password }),
+        });
+        
+        const data = await response.json();
+        
+        console.log('Auth response:', response.status, data);
+        setDebugInfo(prev => prev + `\nAuth response: ${response.status}, ${JSON.stringify(data)}`);
 
-      // Проверяем учетные данные в базе данных
-      const { data, error: dbError } = await supabase
-        .from('admin_users')
-        .select('id, username')
-        .eq('username', username)
-        .eq('password_hash', passwordHash)
-        .single();
+        if (!response.ok) {
+          console.error('Login error:', data.error);
+          setError(data.error || 'Ошибка аутентификации');
+          setLoading(false);
+          return;
+        }
 
-      if (dbError || !data) {
-        console.error('Login error:', dbError);
-        setError('Неверный логин или пароль');
+        // Успешный вход в систему
+        console.log('Login successful, user ID:', data.user.id);
+        setDebugInfo(prev => prev + `\nLogin successful, user ID: ${data.user.id}`);
+        login(data.user.id, data.user.role);
+        
+        // Сохраняем факт авторизации в localStorage для сохранения сессии
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('isAdmin', 'true');
+        }
+        
+        // Перенаправляем на страницу администратора с использованием window.location
+        console.log('Navigating to /admin');
+        setDebugInfo(prev => prev + '\nNavigating to /admin');
+        window.location.href = '/admin';
+      } catch (apiError) {
+        console.error('API error:', apiError);
+        setDebugInfo(prev => prev + `\nAPI error: ${apiError instanceof Error ? apiError.message : String(apiError)}`);
+        setError('Ошибка при соединении с сервером');
         setLoading(false);
-        return;
       }
-
-      // Успешный вход в систему
-      login(data.id, 'admin');
-      
-      // Сохраняем факт авторизации в localStorage для сохранения сессии
-      localStorage.setItem('isAdmin', 'true');
-      
-      // Перенаправляем на страницу администратора
-      navigate('/admin');
     } catch (err) {
-      setError('Ошибка при входе в систему');
       console.error('Login error:', err);
+      setDebugInfo(prev => prev + `\nGeneral error: ${err instanceof Error ? err.message : String(err)}`);
+      setError('Ошибка при входе в систему');
     } finally {
       setLoading(false);
     }
@@ -122,6 +169,12 @@ export default function Login() {
           >
             {loading ? 'Вход...' : 'Войти'}
           </button>
+          
+          {debugInfo && (
+            <div className="mt-6 p-3 bg-gray-800 rounded-lg overflow-auto max-h-40 text-xs font-mono">
+              <div className="text-gray-400 whitespace-pre-wrap">{debugInfo}</div>
+            </div>
+          )}
         </form>
       </div>
     </div>

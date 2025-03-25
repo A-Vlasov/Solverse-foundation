@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigation } from '../../app/components/SimpleNavigation';
 import {
   BarChart3,
   Users,
@@ -31,7 +31,7 @@ interface SessionDisplay extends TestSession {
 }
 
 function Dashboard() {
-  const navigate = useNavigate();
+  const { navigate, prefetch } = useNavigation();
   const [filters, setFilters] = useState({
     department: 'all',
     level: 'all',
@@ -45,111 +45,40 @@ function Dashboard() {
   // Состояние для хранения данных о недавних тестированиях
   const [recentTestSessions, setRecentTestSessions] = useState<SessionDisplay[]>([]);
   const [loadingTestSessions, setLoadingTestSessions] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Загружаем данные о сотрудниках при монтировании компонента
+  // Загрузка данных через API
   useEffect(() => {
-    const fetchEmployees = async () => {
+    const fetchData = async () => {
       try {
-        setLoadingEmployees(true);
-        const data = await getEmployees();
-        setEmployees(data);
+        // Параллельная загрузка сотрудников и тестовых сессий
+        const [employeesResponse, sessionsResponse] = await Promise.all([
+          fetch('/api/employees'),
+          fetch('/api/test-sessions')
+        ]);
+        
+        if (!employeesResponse.ok || !sessionsResponse.ok) {
+          throw new Error('Ошибка загрузки данных');
+        }
+        
+        const [employeesData, sessionsData] = await Promise.all([
+          employeesResponse.json(),
+          sessionsResponse.json()
+        ]);
+        
+        setEmployees(employeesData);
+        setRecentTestSessions(sessionsData);
       } catch (error) {
-        console.error('Error fetching employees:', error);
+        console.error('Error loading dashboard data:', error);
+        setError('Ошибка загрузки данных. Пожалуйста, попробуйте позже.');
       } finally {
         setLoadingEmployees(false);
-      }
-    };
-
-    fetchEmployees();
-  }, []);
-
-  // Загружаем данные о недавних тестированиях при монтировании компонента
-  useEffect(() => {
-    const fetchRecentTestSessions = async () => {
-      try {
-        setLoadingTestSessions(true);
-        console.log('🔄 Dashboard: Fetching recent test sessions...');
-        
-        // Очищаем кэш, чтобы гарантировать получение свежих данных
-        try {
-          localStorage.removeItem('recent_test_sessions');
-        } catch (e) {
-          // Игнорируем ошибки localStorage
-        }
-        
-        const sessions = await getRecentTestSessions(10);
-        console.log('📋 Dashboard: Received test sessions:', sessions.map(s => ({
-          id: s.id,
-          completed: s.completed,
-          end_time: s.end_time,
-          employee: s.employee?.first_name,
-          chats: s.chats?.length
-        })));
-        
-        // Проверяем и исправляем статус completed на основе наличия end_time
-        const correctedSessions = sessions.map(session => {
-          // Если сессия имеет end_time, но не помечена как completed
-          if (session.end_time && !session.completed) {
-            console.warn('⚠️ Dashboard: Session has end_time but not marked as completed:', session.id);
-            return { ...session, completed: true };
-          }
-          return session;
-        });
-        
-        // Проверяем наличие данных о сотрудниках
-        const missingEmployeeData = correctedSessions.filter(session => !session.employee || !session.employee.first_name);
-        if (missingEmployeeData.length > 0) {
-          console.warn('⚠️ Dashboard: Missing employee data for sessions:', 
-            missingEmployeeData.map(s => s.id));
-        }
-        
-        const displaySessions: SessionDisplay[] = correctedSessions.map(session => ({
-          ...session,
-          character_name: getCharacterNameBySessionNumber(session.id),
-          messages_count: getMessagesCount(session)
-        }));
-        
-        console.log('✅ Dashboard: Processed sessions for display:', displaySessions.length);
-        setRecentTestSessions(displaySessions);
-      } catch (error) {
-        console.error('❌ Dashboard: Error fetching test sessions:', error);
-      } finally {
         setLoadingTestSessions(false);
       }
     };
     
-    // Немедленно загружаем данные при монтировании
-    fetchRecentTestSessions();
-    
-    // Устанавливаем интервал обновления каждые 10 секунд вместо 30 секунд
-    const intervalId = setInterval(fetchRecentTestSessions, 10000);
-    return () => clearInterval(intervalId);
+    fetchData();
   }, []);
-
-  // Функция для получения имени персонажа по номеру сессии
-  const getCharacterNameBySessionNumber = (sessionId: string): string => {
-    // Используем последнюю цифру ID сессии для определения персонажа (упрощенная логика)
-    const lastChar = sessionId.charAt(sessionId.length - 1);
-    const charNum = parseInt(lastChar, 10) % 4;
-    
-    switch(charNum) {
-      case 0: return 'Marcus';
-      case 1: return 'Shrek';
-      case 2: return 'Oliver';
-      case 3: return 'Alex';
-      default: return 'Unknown';
-    }
-  };
-  
-  // Функция для получения количества сообщений в сессии
-  const getMessagesCount = (session: TestSession): number => {
-    // Если есть данные о чатах, считаем общее количество сообщений
-    if (session.chats && session.chats.length > 0) {
-      return session.chats.reduce((total, chat) => total + (chat.messages?.length || 0), 0);
-    }
-    // Иначе возвращаем случайное значение для демонстрации
-    return Math.floor(Math.random() * 20) + 5;
-  };
 
   const stats = {
     todayTrainees: recentTestSessions.filter(session => {
@@ -193,45 +122,36 @@ function Dashboard() {
     });
 
   const handleEmployeeClick = (id: string) => {
+    // Просто переходим по ссылке без лишней логики
     navigate(`/admin/employee/${id}`);
   };
 
   const handleNewEmployeeClick = () => {
-    // Generate a unique ID for the new employee
-    const newEmployeeId = Date.now().toString();
-    
-    // Create a new employee object with default values
-    const newEmployee = {
-      id: newEmployeeId,
-      name: 'Новый сотрудник',
-      department: 'Продажи',
-      level: 'Новичок',
-      success: 0,
-      trend: 'up',
-      improvement: '0%',
-      status: 'новый сотрудник',
-      avatar: 'Н',
-    };
-
-    // In a real application, you would:
-    // 1. Make an API call to create the employee in the database
-    // 2. Update the local state with the new employee
-    // 3. Handle any errors that might occur
-
-    // For now, we'll just navigate to the new employee form
     navigate('/admin/new-employee');
   };
 
-  const handleViewTestResults = (employeeId?: string) => {
-    // Получаем ID сессии из первой (последней) доступной сессии сотрудника
-    const targetEmployeeId = employeeId || recentTestSessions[0]?.employee_id;
-    const employeeSession = recentTestSessions.find(session => session.employee_id === targetEmployeeId);
-    
-    if (employeeSession) {
-      navigate(`/admin/session/${employeeSession.id}`);
-    } else {
-      console.error('Не удалось найти сессию для сотрудника', targetEmployeeId);
-      // Можно добавить всплывающее уведомление о том, что сессия не найдена
+  const handleViewTestResults = async (employeeId: string) => {
+    try {
+      // Получаем результаты тестирования сотрудника через API
+      const response = await fetch(`/api/test-results?employeeId=${employeeId}`);
+      
+      if (!response.ok) {
+        throw new Error('Ошибка загрузки результатов тестирования');
+      }
+      
+      const results = await response.json();
+      
+      // Если есть результаты, выбираем первый для отображения
+      if (results && results.length > 0) {
+        const sessionId = results[0].test_session_id;
+        navigate(`/test-results/${sessionId}`);
+      } else {
+        // Если результатов нет, показываем сообщение
+        alert('Для данного сотрудника еще нет результатов тестирования');
+      }
+    } catch (error) {
+      console.error('Error fetching test results:', error);
+      alert('Ошибка при загрузке результатов тестирования');
     }
   };
 
@@ -249,6 +169,11 @@ function Dashboard() {
       console.error('Не удалось найти сессию для сотрудника', id);
       // Можно добавить всплывающее уведомление о том, что сессия не найдена
     }
+  };
+
+  const handleEmployeeMouseOver = (id: string) => {
+    // Предварительно загружаем страницу при наведении
+    prefetch(`/admin/employee/${id}`);
   };
 
   // Function to get color class based on score
@@ -491,6 +416,7 @@ function Dashboard() {
                         key={employee.id}
                         className="border-b border-[#3d3d3d] hover:bg-[#2a2a2a] transition-colors cursor-pointer"
                         onClick={() => handleEmployeeClick(employee.id)}
+                        onMouseOver={() => handleEmployeeMouseOver(employee.id)}
                       >
                         <td className="py-4">
                           <div className="flex items-center gap-3">

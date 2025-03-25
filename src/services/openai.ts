@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 
-const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
+// Используем переменные окружения формата Next.js
+const OPENAI_API_KEY = process.env.NEXT_PUBLIC_OPENAI_API_KEY;
 
 if (!OPENAI_API_KEY) {
   throw new Error('OpenAI API key is not set in environment variables');
