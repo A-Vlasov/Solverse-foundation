@@ -13,35 +13,6 @@ interface GrokResponse {
 // Use environment variables for API URLs
 const API_BASE_URL = 'http://145.223.85.248:3001/api';
 
-// Функция для проверки доступности API
-const checkApiAvailability = async (): Promise<boolean> => {
-  try {
-    console.log('Проверка доступности API сервера Grok...');
-    
-    // Устанавливаем тайм-аут для проверки доступности
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 секунд тайм-аут
-    
-    const response = await fetch(`${API_BASE_URL}/health`, {
-      method: 'GET',
-      signal: controller.signal
-    }).catch(() => null);
-    
-    clearTimeout(timeoutId);
-    
-    if (response && response.ok) {
-      console.log('API сервер Grok доступен');
-      return true;
-    }
-    
-    console.warn('API сервер Grok недоступен');
-    return false;
-  } catch (error) {
-    console.warn('Ошибка при проверке доступности API:', error);
-    return false;
-  }
-};
-
 /**
  * Sends a message to Grok API to start a new conversation
  */
@@ -49,26 +20,13 @@ export const startNewGrokConversation = async (message: string): Promise<GrokRes
   try {
     console.log('Starting new Grok conversation with message:', message);
     
-    // Проверяем доступность API перед отправкой запроса
-    const isApiAvailable = await checkApiAvailability();
-    if (!isApiAvailable) {
-      console.error('Grok API не доступен. Возвращаем заглушку ответа.');
-      return {
-        conversation_id: 'local-' + Date.now(),
-        parent_response_id: 'local-' + Date.now(),
-        response: 'Извините, сервис временно недоступен. Пожалуйста, повторите попытку позже.',
-        error: 'API server is not available'
-      };
-    }
-    
-    // Используем функцию повторных попыток вместо простого fetch
-    const response = await retryFetch(`${API_BASE_URL}/chat/new`, {
+    const response = await fetch(`${API_BASE_URL}/chat/new`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({ message })
-    }, 3, 1000); // 3 попытки с начальной задержкой 1 секунда
+    });
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -82,11 +40,10 @@ export const startNewGrokConversation = async (message: string): Promise<GrokRes
   } catch (error) {
     console.error('Error starting new Grok conversation:', error);
     
-    // Возвращаем локальный ответ в случае ошибки
     return {
-      conversation_id: 'local-' + Date.now(),
-      parent_response_id: 'local-' + Date.now(),
-      response: 'Извините, произошла ошибка при обработке запроса. Пожалуйста, повторите попытку позже.',
+      conversation_id: '',
+      parent_response_id: '',
+      response: '',
       error: error instanceof Error ? error.message : 'Unknown error occurred'
     };
   }
@@ -107,20 +64,7 @@ export const continueGrokConversation = async (
       parent_response_id
     });
     
-    // Проверяем доступность API перед отправкой запроса
-    const isApiAvailable = await checkApiAvailability();
-    if (!isApiAvailable) {
-      console.error('Grok API не доступен. Возвращаем заглушку ответа.');
-      return {
-        conversation_id: conversation_id || ('local-' + Date.now()),
-        parent_response_id: parent_response_id || ('local-' + Date.now()),
-        response: 'Извините, сервис временно недоступен. Пожалуйста, повторите попытку позже.',
-        error: 'API server is not available'
-      };
-    }
-    
-    // Используем функцию повторных попыток вместо простого fetch
-    const response = await retryFetch(`${API_BASE_URL}/chat`, {
+    const response = await fetch(`${API_BASE_URL}/chat`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -130,7 +74,7 @@ export const continueGrokConversation = async (
         conversation_id,
         parent_response_id
       })
-    }, 3, 1000); // 3 попытки с начальной задержкой 1 секунда
+    });
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -151,11 +95,10 @@ export const continueGrokConversation = async (
   } catch (error) {
     console.error('Error continuing Grok conversation:', error);
     
-    // Возвращаем локальный ответ в случае ошибки
     return {
-      conversation_id: conversation_id || ('local-' + Date.now()),
-      parent_response_id: parent_response_id || ('local-' + Date.now()),
-      response: 'Извините, произошла ошибка при обработке запроса. Пожалуйста, повторите попытку позже.',
+      conversation_id,
+      parent_response_id,
+      response: '',
       error: error instanceof Error ? error.message : 'Unknown error occurred'
     };
   }
