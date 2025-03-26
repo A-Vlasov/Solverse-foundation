@@ -953,55 +953,57 @@ function Chat() {
           photoMessageContent,
           '', // employeeId пустой, так как мы используем sessionId
           chatNumber,
-          existingConversation ? {
-            conversationId: existingConversation.conversationId,
-            parentResponseId: existingConversation.parentResponseId
-          } : undefined
+          existingConversation && existingConversation.conversationId && existingConversation.parentResponseId
+            ? {
+                conversationId: existingConversation.conversationId,
+                parentResponseId: existingConversation.parentResponseId
+              } 
+            : undefined
         );
-
-        // Получаем историю сообщений для текущего пользователя
-        const chatHistory = chatHistories[selectedUser];
         
-        // Создаем массив сообщений для отправки в API
-        let messagesToSend = chatHistory.map(msg => ({
-          role: msg.isOwn ? 'user' : 'assistant',
-          content: msg.imageUrl 
-              ? `[Photo ${msg.imageUrl.match(/\/(\d+)\.jpg$/)?.[1] || ''}] [${preloadedImages.find(img => img.url === msg.imageUrl)?.prompt || 'User sent an image'}]${msg.price ? ` [Price: ${msg.price}]` : ''} [model sent photo]` 
-            : msg.content
-        })) as { role: 'user' | 'assistant' | 'system', content: string }[];
+        // Создаем массив сообщений для отправки в Grok API
+        let messagesToSend: { role: 'user' | 'assistant' | 'system', content: string }[] = [];
         
-        messagesToSend.push({
-          role: 'user',
-          content: photoMessageContent
-        });
-
-        // Если это первое сообщение в чате, добавляем системный промпт
-        if (chatHistory.length === 0 || !existingConversation) {
-          messagesToSend.unshift({
-            role: 'system',
-            content: userPrompts[selectedUser]
-          });
-        }
-        
-        // Проверяем, есть ли хотя бы одно сообщение от пользователя
-        const hasUserMessage = messagesToSend.some(msg => msg.role === 'user');
-        if (!hasUserMessage) {
-          messagesToSend.push({
+        // Если есть существующий разговор, отправляем только текущее сообщение
+        if (existingConversation && existingConversation.conversationId && existingConversation.parentResponseId) {
+          // Для продолжающегося чата отправляем только текущее сообщение
+          messagesToSend = [{
             role: 'user',
             content: photoMessageContent
-          });
+          }];
+          console.log('Continuing existing conversation - sending only current message');
+        } else {
+          // Для нового чата отправляем системный промпт и текущее сообщение
+          messagesToSend = [
+            {
+              role: 'system',
+              content: userPrompts[selectedUser]
+            },
+            {
+              role: 'user',
+              content: photoMessageContent
+            }
+          ];
+          console.log('Starting new conversation with system prompt and message');
         }
         
         // Вызываем Grok API
         const grokResponse = await grokService.generateResponse(
           messagesToSend,
-          existingConversation ? {
-            conversationId: existingConversation.conversationId,
-            parentResponseId: existingConversation.parentResponseId
-          } : undefined
+          existingConversation && existingConversation.conversationId && existingConversation.parentResponseId
+            ? {
+                conversationId: existingConversation.conversationId,
+                parentResponseId: existingConversation.parentResponseId
+              }
+            : undefined
         );
 
         // Сохраняем информацию о разговоре для будущих сообщений
+        console.log('Updating conversation details after photo message:', {
+          conversationId: grokResponse.conversation_id,
+          parentResponseId: grokResponse.parent_response_id
+        });
+
         setUserConversations(prev => ({
           ...prev,
           [selectedUser]: {
@@ -1404,10 +1406,12 @@ function Chat() {
         message,
         '', // employeeId пустой, так как мы используем sessionId
         chatNumber,
-        existingConversation ? {
-          conversationId: existingConversation.conversationId,
-          parentResponseId: existingConversation.parentResponseId
-        } : undefined
+        existingConversation && existingConversation.conversationId && existingConversation.parentResponseId
+          ? {
+              conversationId: existingConversation.conversationId,
+              parentResponseId: existingConversation.parentResponseId
+            } 
+          : undefined
       );
 
       // Обрабатываем ответ от API
@@ -1481,6 +1485,11 @@ function Chat() {
         
         // Сохраняем информацию о разговоре для будущих сообщений
         if (botResponse.conversation_id && botResponse.parent_response_id) {
+          console.log('Updating conversation details for future messages:', {
+            conversationId: botResponse.conversation_id,
+            parentResponseId: botResponse.parent_response_id
+          });
+          
           setUserConversations(prev => ({
             ...prev,
             [selectedUser]: {

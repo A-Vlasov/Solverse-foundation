@@ -95,37 +95,56 @@ export async function POST(request: Request) {
     }
     
     // Формируем сообщения для Grok
-    const messagesForGrok: GrokMessage[] = currentChat.messages.map((msg: any) => ({
-      role: (msg.isOwn ? 'user' : 'assistant') as MessageRole,
-      content: msg.content
-    }));
+    let messagesForGrok: GrokMessage[] = [];
     
-    // Проверяем, есть ли хотя бы одно сообщение от пользователя
-    const hasUserMessage = messagesForGrok.some(msg => msg.role === 'user');
-    
-    // Если нет сообщения от пользователя (что странно, но на всякий случай), добавляем текущее сообщение
-    if (!hasUserMessage) {
-      console.log('No user message found, adding current message:', message);
-      messagesForGrok.push({
-        role: 'user',
-        content: message
-      });
-    }
-    
-    // Добавляем системный промпт в зависимости от номера чата
+    // Добавляем системный промпт в зависимости от номера чата только для новых чатов или если явно не указаны детали разговора
     // chat_number соответствует следующим пользователям из userPrompts: 1: Marcus, 2: Shrek, 3: Oliver, 4: Alex
     const userNames = ['Marcus', 'Shrek', 'Oliver', 'Alex'];
     const userName = userNames[chatNumber - 1] || 'Marcus';
     
-    // Добавляем системный промпт только если это новый чат (первое сообщение)
-    // или если явно не переданы данные о существующей беседе
-    if ((currentChat.messages.length <= 1 || !conversationDetails) && !messagesForGrok.some(msg => msg.role === 'system')) {
-      console.log('Adding system prompt for', userName);
+    // Если это продолжение существующего чата, мы отправляем только текущее сообщение пользователя
+    // Это предотвращает проблему отправки сообщений Grok обратно в систему
+    if (conversationDetails && conversationDetails.conversationId && conversationDetails.parentResponseId) {
+      console.log('Continuing existing chat, sending only current user message');
+      // Отправляем только текущее сообщение пользователя без системного промпта
+      messagesForGrok = [{
+        role: 'user',
+        content: message
+      }];
+      console.log('Message to send for existing conversation:', message.substring(0, 50) + (message.length > 50 ? '...' : ''));
+    } else {
+      // Для нового чата добавляем системный промпт
+      console.log('Adding system prompt for new chat with', userName);
       const systemPrompt = userPrompts[userName] || 'You are a friendly assistant.';
-      messagesForGrok.unshift({
+      messagesForGrok.push({
         role: 'system',
         content: systemPrompt
       });
+      
+      // Для нового чата отправляем последние несколько сообщений для контекста
+      // Но не более 5 сообщений, чтобы избежать переполнения контекста
+      const recentMessages = currentChat.messages
+        .filter((msg: any) => msg.content && msg.content.trim())
+        .slice(-5)
+        .map((msg: any) => ({
+          role: (msg.isOwn ? 'user' : 'assistant') as MessageRole,
+          content: msg.content
+        }));
+      
+      // Добавляем последние сообщения в контекст
+      messagesForGrok.push(...recentMessages);
+      
+      // Проверяем, есть ли хотя бы одно сообщение от пользователя
+      const hasUserMessage = messagesForGrok.some(msg => msg.role === 'user');
+      
+      // Если нет сообщения от пользователя, добавляем текущее
+      if (!hasUserMessage) {
+        console.log('No user message found, adding current message:', message);
+        messagesForGrok.push({
+          role: 'user',
+          content: message
+        });
+      }
     }
     
     console.log('Final messages for Grok:', messagesForGrok.map(m => ({ 

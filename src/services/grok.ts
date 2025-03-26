@@ -111,8 +111,21 @@ export const generateGrokResponse = async (
   messages: { role: 'user' | 'assistant' | 'system', content: string }[],
   conversationDetails?: { conversationId: string; parentResponseId: string }
 ): Promise<GrokResponse> => {
-  const lastUserMessage = [...messages].reverse().find(msg => msg.role === 'user');
-  const systemMessage = messages.find(msg => msg.role === 'system');
+  // Отфильтровываем пустые сообщения
+  const filteredMessages = messages.filter(msg => msg.content && msg.content.trim());
+  
+  // Проверяем, продолжаем ли мы существующий разговор
+  const isExistingConversation = !!(
+    conversationDetails && 
+    conversationDetails.conversationId && 
+    conversationDetails.parentResponseId
+  );
+  
+  console.log(`Generating Grok response for ${isExistingConversation ? 'existing' : 'new'} conversation`);
+  
+  // Находим последнее сообщение пользователя
+  const lastUserMessage = [...filteredMessages].reverse().find(msg => msg.role === 'user');
+  const systemMessage = filteredMessages.find(msg => msg.role === 'system');
   
   if (!lastUserMessage) {
     return {
@@ -123,13 +136,12 @@ export const generateGrokResponse = async (
     };
   }
 
+  // Берем содержимое последнего сообщения пользователя
   let messageToSend = lastUserMessage.content;
   
-  if (systemMessage && !conversationDetails) {
-    messageToSend = `${systemMessage.content}\n\nGirls message: ${messageToSend}`;
-  }
-
-  if (conversationDetails?.conversationId && conversationDetails?.parentResponseId) {
+  // Для продолжения существующего разговора отправляем только текущее сообщение пользователя
+  if (isExistingConversation) {
+    console.log('Continuing conversation with message:', messageToSend.substring(0, 50) + (messageToSend.length > 50 ? '...' : ''));
     return continueGrokConversation(
       messageToSend,
       conversationDetails.conversationId,
@@ -137,6 +149,14 @@ export const generateGrokResponse = async (
     );
   }
   
+  // Для нового разговора добавляем системный промпт, если он есть
+  if (systemMessage) {
+    console.log('Adding system prompt to message for new conversation');
+    messageToSend = `${systemMessage.content}\n\nGirls message: ${messageToSend}`;
+  }
+  
+  // Запускаем новый разговор с сформированным сообщением
+  console.log('Starting new conversation with message:', messageToSend.substring(0, 50) + (messageToSend.length > 50 ? '...' : ''));
   return startNewGrokConversation(messageToSend);
 };
 
