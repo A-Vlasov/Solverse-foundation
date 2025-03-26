@@ -1,23 +1,43 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getTestSession, getTestSessionChats } from '../../../../src/lib/supabase';
 
 // GET /api/test-sessions/:sessionId - получить сессию тестирования по ID
-export async function GET(
-  request: Request,
-  { params }: { params: { sessionId: string } }
-) {
+export async function GET(request: NextRequest, { params }: { params: { sessionId: string } }) {
+  const sessionId = params.sessionId;
+  
+  console.log(`[API] /api/test-sessions/${sessionId}: Запрос получения сессии`);
+  
+  if (!sessionId) {
+    console.error('[API] /api/test-sessions/[sessionId]: Не указан ID сессии');
+    return NextResponse.json(
+      { error: 'Session ID is required' },
+      { status: 400 }
+    );
+  }
+  
+  // Проверка валидности ID сессии (UUID)
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidRegex.test(sessionId)) {
+    console.error(`[API] /api/test-sessions/[sessionId]: Невалидный формат ID сессии: ${sessionId}`);
+    return NextResponse.json(
+      { error: 'Invalid session ID format' },
+      { status: 400 }
+    );
+  }
+  
   try {
-    const sessionId = params.sessionId;
+    console.log(`[API] /api/test-sessions/${sessionId}: Запрос данных из базы...`);
+    const session = await getTestSession(sessionId);
     
-    if (!sessionId) {
+    if (!session) {
+      console.warn(`[API] /api/test-sessions/${sessionId}: Сессия не найдена`);
       return NextResponse.json(
-        { error: 'ID сессии не указан' },
-        { status: 400 }
+        { message: 'Session not found' },
+        { status: 404 }
       );
     }
-
-    // Получаем информацию о сессии
-    const session = await getTestSession(sessionId);
+    
+    console.log(`[API] /api/test-sessions/${sessionId}: Сессия успешно получена`);
     
     // Дополнительно получаем историю чатов для этой сессии
     const chats = await getTestSessionChats(sessionId);
@@ -28,9 +48,11 @@ export async function GET(
       chats
     });
   } catch (error) {
-    console.error('Error fetching test session:', error);
+    console.error(`[API] /api/test-sessions/${sessionId}: Ошибка:`, error);
+    
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json(
-      { error: 'Ошибка при получении сессии тестирования' },
+      { error: `Failed to fetch test session: ${errorMessage}` },
       { status: 500 }
     );
   }

@@ -156,18 +156,29 @@ function Dashboard() {
   };
 
   const handleViewAllTestResults = () => {
-    handleViewTestResults();
+    navigate("/admin/test-results");
   };
 
   const handleViewEmployeeTestResults = (id: string) => {
-    // Ищем последнюю тестовую сессию для этого сотрудника
-    const employeeSession = recentTestSessions.find(session => session.employee_id === id);
-    
-    if (employeeSession) {
-      navigate(`/admin/session/${employeeSession.id}`);
-    } else {
-      console.error('Не удалось найти сессию для сотрудника', id);
-      // Можно добавить всплывающее уведомление о том, что сессия не найдена
+    try {
+      // Найдем последнюю сессию для данного сотрудника
+      const sessionForEmployee = recentTestSessions.find(
+        session => session.employee_id === id && session.completed
+      );
+      
+      if (sessionForEmployee) {
+        console.log(`Переход к результатам сессии: ${sessionForEmployee.id}`);
+        
+        // Прямое изменение URL вместо использования React Router
+        window.location.href = `/admin/session/${sessionForEmployee.id}`;
+      } else {
+        // Если сессия не найдена или не завершена, показываем уведомление
+        console.warn(`Не найдена завершенная сессия для сотрудника: ${id}`);
+        alert('Для данного сотрудника нет завершенных сессий тестирования');
+      }
+    } catch (error) {
+      console.error('Ошибка при переходе к результатам теста:', error);
+      alert('Произошла ошибка при попытке просмотра результатов теста');
     }
   };
 
@@ -260,7 +271,13 @@ function Dashboard() {
                     <tr 
                       key={session.id} 
                       className="hover:bg-[#3d3d3d]/30 transition-colors cursor-pointer"
-                      onClick={() => navigate(`/admin/session/${session.id}`)}
+                      onClick={(e) => {
+                        e.preventDefault(); // Предотвращаем любое стандартное поведение
+                        console.log(`Переход к результатам сессии из таблицы: ${session.id}`);
+                        
+                        // Прямое изменение URL вместо использования React Router
+                        window.location.href = `/admin/session/${session.id}`;
+                      }}
                     >
                       <td className="py-4 pl-4">
                         <div className="flex items-center gap-3">

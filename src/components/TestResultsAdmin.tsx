@@ -158,85 +158,109 @@ const checkPhotoPurchaseStatus = (dialogueMessages: DialogueMessage[], photoMsgI
 function TestResultsAdmin() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { sessionId: paramSessionId } = useParams<{ sessionId: string }>();
+  const params = useParams();
+  const container = document.querySelector('.test-result-container');
+  
+  // Состояния
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
+  const [selectedTab, setSelectedTab] = useState('summary');
+  const [selectedDialogue, setSelectedDialogue] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<TestResultState | null>(null);
+  const [dialogues, setDialogues] = useState<Dialogue[]>([]);
+  const [employeeId, setEmployeeId] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<TestSession[]>([]);
+  const [chats, setChats] = useState<Chat[]>([]);
+  const [dataLoaded, setDataLoaded] = useState(false);
+  const [allSessions, setAllSessions] = useState<TestSession[]>([]);
+  const [loadingSessions, setLoadingSessions] = useState(false);
+  
+  // Параметры из URL
+  const paramSessionId = params.sessionId;
+  const lastSegment = location.pathname.split('/').pop();
+  const containerSessionId = container?.getAttribute('data-session-id');
   
   // Более простая проверка валидности UUID
   const isValidUUID = (id: string | null): boolean => {
     if (!id) return false;
-    return id.length >= 32 && id.includes('-'); // Упрощенная проверка
+    // Очень простая проверка - просто убедимся, что это не 'admin'
+    return id !== 'admin';
   };
   
-  // Пробуем получить sessionId из различных источников
-  // 1. Из URL-параметров
-  const pathSegments = location.pathname.split('/');
-  const lastSegment = pathSegments[pathSegments.length - 1];
-  
-  // 2. Из data-атрибута контейнера
-  const container = document.getElementById('test-results-container');
-  const containerSessionId = container?.getAttribute('data-session-id');
-  
-  // 3. Из state (при навигации с помощью navigate)
-  const stateSessionId = location.state?.sessionId;
-  
-  // Определяем, находимся ли на странице /admin без указания ID
+  // Определяем, находимся ли на странице /admin без указания ID или на странице сессии
   const isAdminPage = location.pathname === '/admin' || location.pathname === '/admin/';
+  const isSessionPage = location.pathname.includes('/admin/session/') || 
+                       location.pathname.includes('/test-results/');
   
-  // Приоритет: 1. параметр sessionId из props, 2. из контейнера, 3. из state, 4. из URL
-  const sessionId = isAdminPage ? null : (paramSessionId || containerSessionId || stateSessionId || lastSegment);
-  
-  console.log('--------- TestResultsAdmin: Получение sessionId ---------');
+  // Создаем переменную для отладки, чтобы отследить откуда получен sessionId
+  let sessionIdSource = 'не определен';
+
+  // Пытаемся получить sessionId из URL-пути для страницы /admin/session/:sessionId
+  let sessionIdFromPath = null;
+  if (location.pathname.includes('/admin/session/')) {
+    const pathParts = location.pathname.split('/');
+    const lastPart = pathParts[pathParts.length - 1];
+    if (lastPart && lastPart !== 'session' && isValidUUID(lastPart)) {
+      sessionIdFromPath = lastPart;
+      console.log('[TestResultsAdmin] Извлечен sessionId из URL пути:', sessionIdFromPath);
+    }
+  }
+
+  // Улучшенная логика определения sessionId
+  // Приоритет: 1. из URL-пути, 2. параметр из URL, 3. из state, 4. из контейнера, 5. из последнего сегмента URL
+  let finalSessionId = null;
+  let fromDashboard = false;
+
+  // Проверяем все возможные источники с подробным логированием
+  if (sessionIdFromPath) {
+    finalSessionId = sessionIdFromPath;
+    sessionIdSource = 'URL путь /admin/session/:sessionId';
+    console.log('[TestResultsAdmin] Получен sessionId из URL пути /admin/session/:sessionId:', sessionIdFromPath);
+  } else if (paramSessionId && isValidUUID(paramSessionId)) {
+    finalSessionId = paramSessionId;
+    sessionIdSource = 'URL параметр';
+    console.log('[TestResultsAdmin] Получен sessionId из URL параметра:', paramSessionId);
+  } else if (location.state?.sessionId && isValidUUID(location.state?.sessionId)) {
+    finalSessionId = location.state.sessionId;
+    sessionIdSource = 'state при навигации';
+    fromDashboard = location.state?.fromDashboard || false;
+    console.log('[TestResultsAdmin] Получен sessionId из state:', location.state.sessionId, 
+      'fromDashboard:', fromDashboard);
+  } else if (containerSessionId && isValidUUID(containerSessionId)) {
+    finalSessionId = containerSessionId;
+    sessionIdSource = 'data-атрибут контейнера';
+    console.log('[TestResultsAdmin] Получен sessionId из контейнера:', containerSessionId);
+  } else if (!isAdminPage && lastSegment && lastSegment !== 'admin' && isValidUUID(lastSegment)) {
+    finalSessionId = lastSegment;
+    sessionIdSource = 'последний сегмент URL';
+    console.log('[TestResultsAdmin] Получен sessionId из последнего сегмента URL:', lastSegment);
+  } else {
+    console.warn('[TestResultsAdmin] Не удалось определить валидный sessionId ни из одного источника. URL:', location.pathname);
+  }
+
+  // Используем sessionId только если мы на странице сессии
+  // На админ-странице sessionId всегда null
+  const sessionId = isSessionPage ? finalSessionId : 
+                   (isAdminPage ? null : finalSessionId);
+
+  console.log('---------[DEBUG] TestResultsAdmin: Получение sessionId ---------');
   console.log('URL path:', location.pathname);
+  console.log('URL path parts:', location.pathname.split('/'));
   console.log('Last URL segment:', lastSegment);
+  console.log('sessionIdFromPath:', sessionIdFromPath);
   console.log('Container sessionId:', containerSessionId);
-  console.log('State sessionId:', stateSessionId);
+  console.log('State sessionId:', location.state?.sessionId);
   console.log('Props sessionId:', paramSessionId);
   console.log('isAdminPage:', isAdminPage);
-  console.log('Final sessionId:', sessionId);
+  console.log('isSessionPage:', isSessionPage);
+  console.log('Источник sessionId:', sessionIdSource);
+  console.log('Final sessionId:', finalSessionId);
+  console.log('Used sessionId:', sessionId);
+  console.log('fromDashboard:', fromDashboard);
+  console.log('State при навигации:', JSON.stringify(location.state));
   console.log('---------------------------------------------');
-
-  const [selectedDialogue, setSelectedDialogue] = useState<string | null>(null);
-  const [chats, setChats] = useState<Chat[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [dialogues, setDialogues] = useState<Dialogue[]>([]);
-  const [dataLoaded, setDataLoaded] = useState(false);
-  const [allSessions, setAllSessions] = useState<TestSession[]>([]);
-  const [loadingSessions, setLoadingSessions] = useState(false);
-  const [testResult, setTestResult] = useState<TestResultState>({
-    candidateName: '',
-    overallScore: 0,
-    date: '',
-    duration: '',
-    parameters: [],
-    recommendations: [],
-    pricingEvaluation: {
-      score: 0,
-      strengths: [],
-      weaknesses: []
-    },
-    salesPerformance: {
-      introduction: {
-        score: 0,
-        conversionRate: 0,
-        strengths: [],
-        weaknesses: []
-      },
-      warmup: {
-        score: 0,
-        conversionRate: 0,
-        strengths: [],
-        weaknesses: []
-      },
-      sales: {
-        score: 0,
-        conversionRate: 0,
-        strengths: [],
-        weaknesses: []
-      }
-    },
-    dialogues: []
-  });
-
+  
   // Mock data с той же структурой
   const [testResults, setTestResults] = useState<TestResultState>({
     candidateName: '',
@@ -432,237 +456,275 @@ function TestResultsAdmin() {
     }
   };
 
-  // Загрузка данных при монтировании компонента
+  // Загрузка данных при изменении sessionId
   useEffect(() => {
-    if (isAdminPage) {
-      // Если мы на странице /admin, загружаем список сессий
-      setLoading(false);
-      loadAllSessions();
-    } else {
-      loadData();
+    loadData();
+  }, [sessionId]);
+
+  // Функция для преобразования результатов анализа в формат для отображения
+  const processTestResults = (testResult: any, candidateName: string, testDate: string, testDuration: string, dialogues: Dialogue[]): TestResultState => {
+    console.log('[TestResultsAdmin] Обработка результатов анализа...');
+    
+    if (!testResult || !testResult.analysis_result || !testResult.analysis_result.analysisResult) {
+      console.warn('[TestResultsAdmin] Результаты анализа отсутствуют или имеют неверный формат');
+      return {
+        candidateName,
+        overallScore: 0,
+        date: testDate,
+        duration: testDuration,
+        parameters: [],
+        recommendations: [],
+        pricingEvaluation: {
+          score: 0,
+          strengths: [],
+          weaknesses: []
+        },
+        salesPerformance: {
+          introduction: { score: 0, conversionRate: 0, strengths: [], weaknesses: [] },
+          warmup: { score: 0, conversionRate: 0, strengths: [], weaknesses: [] },
+          sales: { score: 0, conversionRate: 0, strengths: [], weaknesses: [] }
+        },
+        dialogues: dialogues || []
+      };
     }
-  }, [sessionId, location.state?.employeeId, location.pathname, isAdminPage]);
-
-  // Оптимизированная функция загрузки данных через серверный API
-  const loadData = async () => {
+    
     try {
-      setLoading(true);
-      setError(null);
-      setDataLoaded(false);
-
-      console.log('Loading data for sessionId:', sessionId);
-
-      // Проверяем, передан ли ID сессии
-      if (sessionId) {
-        console.log('Trying to load test session:', sessionId);
-        
-        try {
-          // Получаем информацию о сессии (сначала пробуем через API, потом напрямую)
-          console.log('Loading session via direct DB...');
-          const session = await getTestSession(sessionId);
-          console.log('Session loaded via direct DB:', session);
-          
-          if (!session) {
-            throw new Error('Сессия не найдена');
-          }
-          
-          // Загружаем историю чатов через прямой запрос к базе данных
-          console.log('Loading chat history via direct DB...');
-          const chatHistory = await getChatHistory(sessionId);
-          console.log('Chat history loaded via direct DB, chats count:', chatHistory?.length || 0);
-          
-          // Устанавливаем чаты независимо от успеха следующих запросов
-          setChats(chatHistory || []);
-          
-          // Обновляем основную информацию о сессии
-          const updatedTestResults = {
-            ...testResults,
-            candidateName: session.employee ? 
-              `${session.employee.first_name || ''} ${session.employee.last_name || ''}`.trim() : 
-              'Неизвестный соискатель',
-            date: new Date(session.created_at || Date.now()).toLocaleDateString(),
-            duration: session.end_time ? 
-              `${Math.round((new Date(session.end_time).getTime() - new Date(session.start_time || session.created_at).getTime()) / 60000)} минут` : 
-              'В процессе'
-          };
-          
-          setTestResults(updatedTestResults);
-          
-          // Преобразуем чаты в формат диалогов для отображения
-          if (chatHistory && chatHistory.length > 0) {
-            // Массив имен персонажей
-            const characterNames = ['Marcus', 'Shrek', 'Oliver', 'Alex'];
-            
-            const newDialogues: Dialogue[] = chatHistory.map((chat: Chat) => ({
-              id: chat.id,
-              title: `Диалог с ${characterNames[chat.chat_number - 1] || 'Unknown'}`,
-              date: new Date(chat.created_at || Date.now()).toLocaleDateString(),
-              duration: '15 минут',
-              score: 85,
-              messages: Array.isArray(chat.messages) ? chat.messages.map((msg: ChatMessage, msgIndex: number): DialogueMessage => ({
-                id: `msg-${msgIndex}`,
-                time: new Date(msg.time || session.created_at || Date.now()).toLocaleTimeString('ru-RU', {
-                  hour: '2-digit',
-                  minute: '2-digit'
-                }),
-                content: msg.content || '',
-                isOwn: Boolean(msg.isOwn),
-                isRead: Boolean(msg.isRead),
-                role: Boolean(msg.isOwn) ? 'user' : 'assistant'
-              })) : []
-            }));
-
-            // Сортируем диалоги по номеру чата
-            newDialogues.sort((a, b) => {
-              const aNumber = characterNames.indexOf(a.title.split(' с ')[1]);
-              const bNumber = characterNames.indexOf(b.title.split(' с ')[1]);
-              return aNumber - bNumber;
-            });
-
-            setDialogues(newDialogues);
-            
-            // Обновляем состояние с диалогами
-            setTestResults(prev => ({
-              ...prev,
-              dialogues: newDialogues
-            }));
-          } else {
-            // Если нет чатов, устанавливаем пустой массив
-            setDialogues([]);
-            console.warn('No chat messages found for session:', sessionId);
-          }
-          
-          // Загружаем результаты теста, если они есть
-          console.log('Loading test results via direct DB...');
-          const result = await getTestResultForSession(sessionId);
-          console.log('Test results loaded via direct DB:', result ? 'Found' : 'Not found');
-          
-          // Если есть результаты анализа, обновляем состояние
-          if (result && result.analysis_result) {
-            // Приводим TestResult к TestResultState, чтобы избежать ошибки типов
-            const resultState = result as unknown as TestResultState;
-            setTestResult(resultState);
-            const analysis = result.analysis_result.dialog_analysis;
-            
-            // Рассчитываем общую оценку
-            const overallScore = calculateOverallScore(analysis.metrics);
-            
-            // Обновляем тестовые результаты реальными данными
-            setTestResults(prev => ({
-              ...prev,
-              overallScore: parseFloat(overallScore.toFixed(1)),
-              parameters: [
-                {
-                  name: 'Вовлеченность',
-                  score: analysis.metrics.engagement.score,
-                  comment: analysis.metrics.engagement.verdict,
-                  icon: <MessageCircle className="w-6 h-6" />,
-                  color: 'blue'
-                },
-                {
-                  name: 'Обаяние и тон',
-                  score: analysis.metrics.charm_and_tone.score,
-                  comment: analysis.metrics.charm_and_tone.verdict,
-                  icon: <Smile className="w-6 h-6" />,
-                  color: 'purple'
-                },
-                {
-                  name: 'Креативность',
-                  score: analysis.metrics.creativity.score,
-                  comment: analysis.metrics.creativity.verdict,
-                  icon: <Lightbulb className="w-6 h-6" />,
-                  color: 'yellow'
-                },
-                {
-                  name: 'Адаптивность',
-                  score: analysis.metrics.adaptability.score,
-                  comment: analysis.metrics.adaptability.verdict,
-                  icon: <RefreshCw className="w-6 h-6" />,
-                  color: 'green'
-                },
-                {
-                  name: 'Умение продавать себя',
-                  score: analysis.metrics.self_promotion.score,
-                  comment: analysis.metrics.self_promotion.verdict,
-                  icon: <DollarSign className="w-6 h-6" />,
-                  color: 'pink'
-                }
-              ],
-              recommendations: analysis.result_summary ? [analysis.result_summary] : [],
-              pricingEvaluation: {
-                score: analysis.metrics.pricing_policy?.score || 0,
-                strengths: analysis.metrics.pricing_policy?.strengths || [],
-                weaknesses: analysis.metrics.pricing_policy?.improvements || [],
-                level: analysis.metrics.pricing_policy ? (
-                  analysis.metrics.pricing_policy.score >= 4 ? 'Высокая' : 
-                  analysis.metrics.pricing_policy.score >= 3 ? 'Средняя' : 'Низкая'
-                ) : undefined,
-                details: analysis.metrics.pricing_policy?.verdict
-              },
-              salesPerformance: {
-                introduction: {
-                  score: analysis.metrics.sales_stages?.introduction?.score || 0,
-                  conversionRate: Math.round((analysis.metrics.sales_stages?.introduction?.score || 0) * 20),
-                  strengths: analysis.metrics.sales_stages?.introduction?.strengths || [],
-                  weaknesses: analysis.metrics.sales_stages?.introduction?.weaknesses || []
-                },
-                warmup: {
-                  score: analysis.metrics.sales_stages?.warmup?.score || 0,
-                  conversionRate: Math.round((analysis.metrics.sales_stages?.warmup?.score || 0) * 20),
-                  strengths: analysis.metrics.sales_stages?.warmup?.strengths || [],
-                  weaknesses: analysis.metrics.sales_stages?.warmup?.weaknesses || []
-                },
-                sales: {
-                  score: analysis.metrics.sales_stages?.closing?.score || 0,
-                  conversionRate: Math.round((analysis.metrics.sales_stages?.closing?.score || 0) * 20),
-                  strengths: analysis.metrics.sales_stages?.closing?.strengths || [],
-                  weaknesses: analysis.metrics.sales_stages?.closing?.weaknesses || []
-                }
-              }
-            }));
-          } else {
-            console.warn('No test results found for session:', sessionId);
-          }
-          
-          setDataLoaded(true);
-        } catch (error) {
-          console.error('Error in data loading flow:', error);
-          setError(`Ошибка при загрузке данных: ${error instanceof Error ? error.message : String(error)}`);
-          setDataLoaded(true);
+      const analysisData = testResult.analysis_result.analysisResult.dialog_analysis;
+      const metrics = analysisData.metrics;
+      
+      // Рассчитываем общую оценку
+      const overallScore = calculateOverallScore(metrics);
+      
+      // Преобразуем метрики в параметры для отображения
+      const parameters = [
+        {
+          name: 'Вовлеченность',
+          score: metrics.engagement.score,
+          comment: metrics.engagement.verdict,
+          icon: <MessageCircle className="w-5 h-5" />,
+          color: 'blue'
+        },
+        {
+          name: 'Обаяние и тон',
+          score: metrics.charm_and_tone.score,
+          comment: metrics.charm_and_tone.verdict,
+          icon: <Smile className="w-5 h-5" />,
+          color: 'yellow'
+        },
+        {
+          name: 'Креативность',
+          score: metrics.creativity.score,
+          comment: metrics.creativity.verdict,
+          icon: <Lightbulb className="w-5 h-5" />,
+          color: 'purple'
+        },
+        {
+          name: 'Адаптивность',
+          score: metrics.adaptability.score,
+          comment: metrics.adaptability.verdict,
+          icon: <RefreshCw className="w-5 h-5" />,
+          color: 'green'
+        },
+        {
+          name: 'Самопродвижение',
+          score: metrics.self_promotion.score,
+          comment: metrics.self_promotion.verdict,
+          icon: <Star className="w-5 h-5" />,
+          color: 'pink'
         }
-      } else if (location.state?.employeeId) {
-        // Если передан ID сотрудника через location.state, используем его
-        const employeeId = location.state.employeeId;
-        console.log('Loading data by employeeId:', employeeId);
-        
-        try {
-          // Загружаем сессии сотрудника напрямую из БД
-          const employeeSessions = await getEmployeeTestSessions(employeeId);
-          console.log('Employee sessions found:', employeeSessions?.length || 0);
-          
-          if (employeeSessions && employeeSessions.length > 0) {
-            // Перенаправляем на страницу с последней сессией
-            navigate(`/admin/session/${employeeSessions[0].id}`);
-          } else {
-            setError('Нет результатов тестов для данного сотрудника');
-            setDataLoaded(true);
-          }
-        } catch (error) {
-          console.error('Error loading employee data:', error);
-          setError(`Ошибка при загрузке данных сотрудника: ${error instanceof Error ? error.message : String(error)}`);
-          setDataLoaded(true);
+      ];
+      
+      // Формируем рекомендации из общего заключения
+      const recommendationsText = analysisData.result_summary || '';
+      const recommendations = recommendationsText
+        .split('.')
+        .map((r: string) => r.trim())
+        .filter((r: string) => r.length > 10 && !r.includes('Рекомендации:'));
+      
+      // Ценовая политика
+      const pricingEvaluation = {
+        score: metrics.pricing_policy?.score || 0,
+        strengths: metrics.pricing_policy?.strengths || [],
+        weaknesses: metrics.pricing_policy?.improvements || []
+      };
+      
+      // Стадии продаж
+      const salesPerformance = {
+        introduction: {
+          score: metrics.sales_stages?.introduction?.score || 0,
+          conversionRate: 0, // Используем фиксированное значение, так как нет данных
+          strengths: metrics.sales_stages?.introduction?.strengths || [],
+          weaknesses: metrics.sales_stages?.introduction?.weaknesses || []
+        },
+        warmup: {
+          score: metrics.sales_stages?.warmup?.score || 0,
+          conversionRate: 0,
+          strengths: metrics.sales_stages?.warmup?.strengths || [],
+          weaknesses: metrics.sales_stages?.warmup?.weaknesses || []
+        },
+        sales: {
+          score: metrics.sales_stages?.closing?.score || 0,
+          conversionRate: 0,
+          strengths: metrics.sales_stages?.closing?.strengths || [],
+          weaknesses: metrics.sales_stages?.closing?.weaknesses || []
         }
-      } else {
-        // Если нет ID сессии, показываем сообщение
-        console.log('No sessionId provided');
-        setError('Отсутствует ID сессии. Пожалуйста, выберите сессию для просмотра результатов.');
-        setLoading(false);
-        setDataLoaded(true);
+      };
+      
+      console.log('[TestResultsAdmin] Данные успешно обработаны для отображения');
+      
+      // Возвращаем обработанные данные
+      return {
+        candidateName,
+        overallScore,
+        date: testDate,
+        duration: testDuration,
+        parameters,
+        recommendations,
+        pricingEvaluation,
+        salesPerformance,
+        dialogues: dialogues || []
+      };
+    } catch (error) {
+      console.error('[TestResultsAdmin] Ошибка при обработке результатов анализа:', error);
+      return {
+        candidateName,
+        overallScore: 0,
+        date: testDate,
+        duration: testDuration,
+        parameters: [],
+        recommendations: [],
+        pricingEvaluation: {
+          score: 0,
+          strengths: [],
+          weaknesses: []
+        },
+        salesPerformance: {
+          introduction: { score: 0, conversionRate: 0, strengths: [], weaknesses: [] },
+          warmup: { score: 0, conversionRate: 0, strengths: [], weaknesses: [] },
+          sales: { score: 0, conversionRate: 0, strengths: [], weaknesses: [] }
+        },
+        dialogues: dialogues || []
+      };
+    }
+  };
+
+  // Функция загрузки данных
+  const loadData = async () => {
+    setLoading(true);
+    setError(null);
+    
+    console.log('[TestResultsAdmin] Начинаем загрузку данных...');
+    
+    if (!sessionId && isAdminPage) {
+      console.log('[TestResultsAdmin] Это страница админ-панели, загружаем список сессий');
+      await loadAllSessions();
+      setLoading(false);
+      return;
+    }
+    
+    if (!sessionId) {
+      console.error('[TestResultsAdmin] Отсутствует ID сессии для загрузки данных');
+      setError('Не указан ID сессии. Пожалуйста, вернитесь в панель управления и выберите сессию.');
+      setLoading(false);
+      return;
+    }
+    
+    console.log(`[TestResultsAdmin] Загрузка данных для сессии: ${sessionId}, источник: ${sessionIdSource}`);
+    
+    // Проверка формата sessionId с UUID
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(sessionId)) {
+      console.error('[TestResultsAdmin] Неверный формат ID сессии, не соответствует UUID');
+      setError(`Некорректный ID сессии: ${sessionId}`);
+      setLoading(false);
+      return;
+    }
+    
+    try {
+      // Загружаем информацию о сессии
+      console.log('[TestResultsAdmin] Загрузка сессии...');
+      const sessionResponse = await fetch(`/api/test-sessions/${sessionId}`);
+      if (!sessionResponse.ok) {
+        throw new Error(`Ошибка загрузки сессии: ${sessionResponse.statusText}`);
       }
-    } catch (err) {
-      console.error('Error loading data:', err);
-      setError('Ошибка при загрузке данных.');
+      
+      const sessionData = await sessionResponse.json();
+      console.log('[TestResultsAdmin] Данные сессии:', sessionData);
+      
+      if (!sessionData) {
+        setError(`Сессия ${sessionId} не найдена`);
+        setLoading(false);
+        return;
+      }
+      
+      // Загружаем историю диалогов
+      console.log('[TestResultsAdmin] Загрузка истории чатов...');
+      const chatHistoryResponse = await fetch(`/api/chat-history/${sessionId}`);
+      
+      const chatHistory = await chatHistoryResponse.json();
+      console.log('[TestResultsAdmin] История чатов:', chatHistory);
+      
+      // Преобразуем историю чатов в диалоги
+      const formattedDialogues = formatDialogues(chatHistory || []);
+      console.log('[TestResultsAdmin] Отформатированные диалоги:', formattedDialogues);
+      
+      // Загружаем результаты тестирования
+      console.log('[TestResultsAdmin] Загрузка результатов тестирования...');
+      const testResultResponse = await fetch(`/api/test-results/${sessionId}`);
+      
+      // Даже если результатов нет, мы не выдаем ошибку, а просто показываем диалоги
+      let testResultData = null;
+      if (testResultResponse.ok) {
+        testResultData = await testResultResponse.json();
+        console.log('[TestResultsAdmin] Результаты тестирования:', testResultData);
+      } else {
+        console.warn('[TestResultsAdmin] Результаты тестирования не найдены:', testResultResponse.statusText);
+      }
+      
+      // Кандидат
+      const candidateName = sessionData.employee && sessionData.employee.first_name 
+        ? sessionData.employee.first_name
+        : 'Неизвестный кандидат';
+      
+      // Дата и продолжительность
+      const testDate = formatDate(sessionData.created_at);
+      const testDuration = calculateTestDuration(sessionData.start_time, sessionData.end_time);
+      
+      // Обрабатываем результаты тестирования
+      const processedResults = processTestResults(
+        testResultData, 
+        candidateName, 
+        testDate, 
+        testDuration, 
+        formattedDialogues
+      );
+      
+      // Устанавливаем обработанные результаты
+      setTestResult(processedResults);
+      setTestResults(processedResults); // Устанавливаем также в дубликат для отображения
+      
+      // Устанавливаем диалоги отдельно, чтобы они всегда были доступны
+      setDialogues(formattedDialogues || []);
+      setChats(chatHistory || []);
+      
+      // Если диалоги есть, выбираем первый
+      if (formattedDialogues && formattedDialogues.length > 0) {
+        setSelectedDialogue(formattedDialogues[0].id);
+      }
+      
+      // Устанавливаем флаг загрузки данных
       setDataLoaded(true);
+      
+      if (!testResultData) {
+        setWarning('Результаты анализа для этой сессии отсутствуют, но вы можете просмотреть диалоги');
+      } else {
+        console.log('[TestResultsAdmin] Результаты анализа успешно загружены');
+      }
+      
+    } catch (error) {
+      console.error('[TestResultsAdmin] Ошибка при загрузке данных:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
+      setError(`Произошла ошибка при загрузке данных: ${errorMessage}`);
     } finally {
       setLoading(false);
     }
@@ -681,6 +743,68 @@ function TestResultsAdmin() {
       });
     } catch (e) {
       return dateString;
+    }
+  };
+
+  // Функция для форматирования диалогов из чатов
+  const formatDialogues = (chatHistory: Chat[]): Dialogue[] => {
+    if (!chatHistory || chatHistory.length === 0) {
+      return [];
+    }
+    
+    // Массив имен персонажей
+    const characterNames = ['Marcus', 'Shrek', 'Oliver', 'Alex'];
+    
+    const dialogues: Dialogue[] = chatHistory.map((chat: Chat) => ({
+      id: chat.id,
+      title: `Диалог с ${characterNames[chat.chat_number - 1] || 'Unknown'}`,
+      date: formatDate(chat.created_at || ''),
+      duration: '15 минут',
+      score: 85,
+      messages: Array.isArray(chat.messages) ? chat.messages.map((msg: ChatMessage, msgIndex: number): DialogueMessage => ({
+        id: `msg-${msgIndex}`,
+        time: new Date(msg.time || chat.created_at || Date.now()).toLocaleTimeString('ru-RU', {
+          hour: '2-digit',
+          minute: '2-digit'
+        }),
+        content: msg.content || '',
+        isOwn: Boolean(msg.isOwn),
+        isRead: Boolean(msg.isRead),
+        role: Boolean(msg.isOwn) ? 'user' : 'assistant'
+      })) : []
+    }));
+    
+    // Сортируем диалоги по номеру чата
+    dialogues.sort((a, b) => {
+      const aNumber = characterNames.indexOf(a.title.split(' с ')[1]);
+      const bNumber = characterNames.indexOf(b.title.split(' с ')[1]);
+      return aNumber - bNumber;
+    });
+    
+    return dialogues;
+  };
+
+  // Функция для вычисления продолжительности теста
+  const calculateTestDuration = (startTime: string | null | undefined, endTime: string | null | undefined): string => {
+    if (!startTime || !endTime) {
+      return 'Не завершено';
+    }
+    
+    try {
+      const start = new Date(startTime);
+      const end = new Date(endTime);
+      const durationMinutes = Math.round((end.getTime() - start.getTime()) / 60000);
+      
+      if (durationMinutes < 60) {
+        return `${durationMinutes} минут`;
+      } else {
+        const hours = Math.floor(durationMinutes / 60);
+        const minutes = durationMinutes % 60;
+        return `${hours} ч ${minutes} мин`;
+      }
+    } catch (error) {
+      console.error('Ошибка при расчете продолжительности теста:', error);
+      return 'Неизвестно';
     }
   };
 
@@ -736,7 +860,7 @@ function TestResultsAdmin() {
                             <div>
                               <h5 className="font-medium">
                                 {session.employee ? 
-                                  `${session.employee.first_name || ''} ${session.employee.last_name || ''}`.trim() :
+                                  `${session.employee.first_name || ''}`.trim() :
                                   'Неизвестный кандидат'}
                               </h5>
                               <p className="text-sm text-gray-400">{formatDate(session.created_at)}</p>
@@ -774,448 +898,454 @@ function TestResultsAdmin() {
         ) : (
           <>
             {/* Основной контент, показываем только если есть реальные данные */}
-            <div className="min-h-screen bg-[#1a1a1a] text-gray-100 p-6">
-              {/* Header - убираем дублирующуюся кнопку назад */}
-              <div className="flex items-center gap-4 mb-8">
-                <motion.div
-                  initial={{ opacity: 0, y: -20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.5 }}
-                >
-                  <h1 className="text-2xl font-bold">Результаты теста модели (Админ-панель)</h1>
-                  <p className="text-gray-400 mt-1">Кандидат: {testResults.candidateName} | Дата: {testResults.date} | Продолжительность: {testResults.duration}</p>
-                </motion.div>
-              </div>
+            {testResults && dialogues.length > 0 ? (
+              <div className="min-h-screen bg-[#1a1a1a] text-gray-100 p-6">
+                {/* Header - убираем дублирующуюся кнопку назад */}
+                <div className="flex items-center gap-4 mb-8">
+                  <motion.div
+                    initial={{ opacity: 0, y: -20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.5 }}
+                  >
+                    <h1 className="text-2xl font-bold">Результаты теста модели (Админ-панель)</h1>
+                    <p className="text-gray-400 mt-1">Кандидат: {testResults.candidateName} | Дата: {testResults.date} | Продолжительность: {testResults.duration}</p>
+                  </motion.div>
+                </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Overall Score Card */}
-                <motion.div 
-                  className="lg:col-span-3 bg-[#2d2d2d] rounded-2xl p-6 border border-[#3d3d3d]"
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ duration: 0.5 }}
-                >
-                  <div className="flex flex-col items-center justify-center">
-                    <h2 className="text-xl font-semibold text-gray-300 mb-2">Общая оценка</h2>
-                    <div>
-                      <span className={`text-5xl font-bold ${getScoreColorClass(testResults.overallScore)}`}>
-                        {testResults.overallScore}
-                      </span>
-                      <span className="text-2xl text-gray-400">/ 5</span>
-                    </div>
-                    <div className="flex items-center gap-1 mb-4">
-                      {renderStars(Math.round(testResults.overallScore))}
-                    </div>
-                    <div className="w-full max-w-md h-3 bg-[#1a1a1a] rounded-full overflow-hidden">
-                      <motion.div 
-                        className="h-full bg-gradient-to-r from-pink-500 to-purple-500"
-                        initial={{ width: 0 }}
-                        animate={{ width: `${(testResults.overallScore / 5) * 100}%` }}
-                        transition={{ duration: 1, delay: 0.5 }}
-                      />
-                    </div>
-                  </div>
-                </motion.div>
-
-                {/* Detailed Parameters */}
-                <motion.div 
-                  className="lg:col-span-2 bg-[#2d2d2d] rounded-2xl p-6 border border-[#3d3d3d]"
-                  variants={containerVariants}
-                  initial="hidden"
-                  animate="visible"
-                >
-                  <h3 className="text-xl font-semibold mb-6">Детальные результаты</h3>
-                  
-                  <div className="space-y-6">
-                    {testResults.parameters.map((param, index) => (
-                      <motion.div 
-                        key={index}
-                        variants={itemVariants}
-                        className="bg-[#1a1a1a] rounded-lg p-4 border border-[#3d3d3d]"
-                      >
-                        <div className="flex items-start gap-4">
-                          <div className={`p-3 rounded-full ${getParameterBgClass(param.color)}`}>
-                            {param.icon}
-                          </div>
-                          <div className="flex-1">
-                            <div className="flex items-center justify-between mb-2">
-                              <h4 className="text-lg font-medium">{param.name}</h4>
-                              <div className="flex items-center gap-1">
-                                {renderStars(param.score)}
-                              </div>
-                            </div>
-                            <p className="text-gray-400">{param.comment}</p>
-                          </div>
-                        </div>
-                      </motion.div>
-                    ))}
-                  </div>
-                </motion.div>
-
-                {/* Pricing Evaluation */}
-                <motion.div 
-                  className="bg-[#2d2d2d] rounded-2xl p-6 border border-[#3d3d3d]"
-                  variants={fadeInVariants}
-                  initial="hidden"
-                  animate="visible"
-                >
-                  <h3 className="text-xl font-semibold mb-6 flex items-center gap-2">
-                    <DollarSign className="w-5 h-5 text-pink-500" />
-                    Ценовая политика
-                  </h3>
-                  
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-gray-400">Оценка:</span>
-                      <div className="flex items-center gap-2">
-                        <span className={`text-xl font-bold ${getScoreColorClass(testResults.pricingEvaluation.score)}`}>
-                          {testResults.pricingEvaluation.score.toFixed(1)}
-                        </span>
-                        <span className="text-sm text-gray-400">/ 5</span>
-                      </div>
-                    </div>
-                    
-                    <div className="bg-[#1a1a1a] rounded-lg p-4 border border-[#3d3d3d]">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-gray-400">Уровень цен:</span>
-                        <span className="font-medium text-blue-400">{testResults.pricingEvaluation.level}</span>
-                      </div>
-                      <p className="text-sm text-gray-300 mt-2">{testResults.pricingEvaluation.details}</p>
-                    </div>
-
-                    <div>
-                      <h4 className="text-sm font-medium text-green-400 mb-2 flex items-center gap-1">
-                        <CheckCircle className="w-4 h-4" />
-                        Сильные стороны
-                      </h4>
-                      <ul className="text-sm space-y-1">
-                        {testResults.pricingEvaluation.strengths.map((strength, idx) => (
-                          <li key={idx} className="text-gray-300 flex items-start gap-2">
-                            <span className="text-green-500 mt-1">•</span>
-                            {strength}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-
-                    {testResults.pricingEvaluation.weaknesses.length > 0 && (
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  {/* Overall Score Card */}
+                  <motion.div 
+                    className="lg:col-span-3 bg-[#2d2d2d] rounded-2xl p-6 border border-[#3d3d3d]"
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ duration: 0.5 }}
+                  >
+                    <div className="flex flex-col items-center justify-center">
+                      <h2 className="text-xl font-semibold text-gray-300 mb-2">Общая оценка</h2>
                       <div>
-                        <h4 className="text-sm font-medium text-red-400 mb-2 flex items-center gap-1">
-                          <XCircle className="w-4 h-4" />
-                          Требуют улучшения
+                        <span className={`text-5xl font-bold ${getScoreColorClass(testResults.overallScore)}`}>
+                          {testResults.overallScore}
+                        </span>
+                        <span className="text-2xl text-gray-400">/ 5</span>
+                      </div>
+                      <div className="flex items-center gap-1 mb-4">
+                        {renderStars(Math.round(testResults.overallScore))}
+                      </div>
+                      <div className="w-full max-w-md h-3 bg-[#1a1a1a] rounded-full overflow-hidden">
+                        <motion.div 
+                          className="h-full bg-gradient-to-r from-pink-500 to-purple-500"
+                          initial={{ width: 0 }}
+                          animate={{ width: `${(testResults.overallScore / 5) * 100}%` }}
+                          transition={{ duration: 1, delay: 0.5 }}
+                        />
+                      </div>
+                    </div>
+                  </motion.div>
+
+                  {/* Detailed Parameters */}
+                  <motion.div 
+                    className="lg:col-span-2 bg-[#2d2d2d] rounded-2xl p-6 border border-[#3d3d3d]"
+                    variants={containerVariants}
+                    initial="hidden"
+                    animate="visible"
+                  >
+                    <h3 className="text-xl font-semibold mb-6">Детальные результаты</h3>
+                    
+                    <div className="space-y-6">
+                      {testResults.parameters.map((param, index) => (
+                        <motion.div 
+                          key={index}
+                          variants={itemVariants}
+                          className="bg-[#1a1a1a] rounded-lg p-4 border border-[#3d3d3d]"
+                        >
+                          <div className="flex items-start gap-4">
+                            <div className={`p-3 rounded-full ${getParameterBgClass(param.color)}`}>
+                              {param.icon}
+                            </div>
+                            <div className="flex-1">
+                              <div className="flex items-center justify-between mb-2">
+                                <h4 className="text-lg font-medium">{param.name}</h4>
+                                <div className="flex items-center gap-1">
+                                  {renderStars(param.score)}
+                                </div>
+                              </div>
+                              <p className="text-gray-400">{param.comment}</p>
+                            </div>
+                          </div>
+                        </motion.div>
+                      ))}
+                    </div>
+                  </motion.div>
+
+                  {/* Pricing Evaluation */}
+                  <motion.div 
+                    className="bg-[#2d2d2d] rounded-2xl p-6 border border-[#3d3d3d]"
+                    variants={fadeInVariants}
+                    initial="hidden"
+                    animate="visible"
+                  >
+                    <h3 className="text-xl font-semibold mb-6 flex items-center gap-2">
+                      <DollarSign className="w-5 h-5 text-pink-500" />
+                      Ценовая политика
+                    </h3>
+                    
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-gray-400">Оценка:</span>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-xl font-bold ${getScoreColorClass(testResults.pricingEvaluation.score)}`}>
+                            {testResults.pricingEvaluation.score.toFixed(1)}
+                          </span>
+                          <span className="text-sm text-gray-400">/ 5</span>
+                        </div>
+                      </div>
+                      
+                      <div className="bg-[#1a1a1a] rounded-lg p-4 border border-[#3d3d3d]">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-gray-400">Уровень цен:</span>
+                          <span className="font-medium text-blue-400">{testResults.pricingEvaluation.level}</span>
+                        </div>
+                        <p className="text-sm text-gray-300 mt-2">{testResults.pricingEvaluation.details}</p>
+                      </div>
+
+                      <div>
+                        <h4 className="text-sm font-medium text-green-400 mb-2 flex items-center gap-1">
+                          <CheckCircle className="w-4 h-4" />
+                          Сильные стороны
                         </h4>
                         <ul className="text-sm space-y-1">
-                          {testResults.pricingEvaluation.weaknesses.map((weakness, idx) => (
+                          {testResults.pricingEvaluation.strengths.map((strength, idx) => (
                             <li key={idx} className="text-gray-300 flex items-start gap-2">
-                              <span className="text-red-500 mt-1">•</span>
-                              {weakness}
+                              <span className="text-green-500 mt-1">•</span>
+                              {strength}
                             </li>
                           ))}
                         </ul>
                       </div>
-                    )}
-                  </div>
-                </motion.div>
 
-                {/* Sales Performance Section */}
-                <motion.div 
-                  className="lg:col-span-3 bg-[#2d2d2d] rounded-2xl p-6 border border-[#3d3d3d] mb-6"
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.5, delay: 0.3 }}
-                >
-                  <h2 className="text-xl font-semibold mb-6 flex items-center gap-2">
-                    <ShoppingCart className="w-6 h-6 text-pink-500" />
-                    Эффективность продаж
-                  </h2>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    {/* Introduction Section */}
-                    <div className="bg-[#1a1a1a] rounded-xl p-5 border border-[#3d3d3d]">
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-2">
-                          <Users className="w-5 h-5 text-blue-500" />
-                          <h3 className="font-semibold">Знакомство</h3>
-                         </div>
-                        <div className={`px-2 py-1 rounded-full text-sm font-medium ${getScoreColorClass(testResults.salesPerformance.introduction.score)}`}>
-                          {testResults.salesPerformance.introduction.score.toFixed(1)}
-                        </div>
-                      </div>
-
-                      <div className="mb-4">
-                        <div className="flex justify-between text-sm mb-1">
-                          <span className="text-gray-400">Конверсия</span>
-                          <span className="font-medium">{testResults.salesPerformance.introduction.conversionRate}%</span>
-                        </div>
-                        <div className="h-2 bg-[#2d2d2d] rounded-full overflow-hidden">
-                          <motion.div 
-                            className={`h-full ${getProgressBarColor(testResults.salesPerformance.introduction.conversionRate)}`}
-                            initial={{ width: 0 }}
-                            animate={{ width: `${testResults.salesPerformance.introduction.conversionRate}%` }}
-                            transition={{ duration: 1, delay: 0.7 }}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="space-y-3">
+                      {testResults.pricingEvaluation.weaknesses.length > 0 && (
                         <div>
-                          <h4 className="text-sm font-medium text-green-400 mb-2 flex items-center gap-1">
-                            <CheckCircle className="w-4 h-4" />
-                            Сильные стороны
+                          <h4 className="text-sm font-medium text-red-400 mb-2 flex items-center gap-1">
+                            <XCircle className="w-4 h-4" />
+                            Требуют улучшения
                           </h4>
                           <ul className="text-sm space-y-1">
-                            {testResults.salesPerformance.introduction.strengths.map((strength, idx) => (
+                            {testResults.pricingEvaluation.weaknesses.map((weakness, idx) => (
                               <li key={idx} className="text-gray-300 flex items-start gap-2">
-                                <span className="text-green-500 mt-1">•</span>
-                                {strength}
+                                <span className="text-red-500 mt-1">•</span>
+                                {weakness}
                               </li>
                             ))}
                           </ul>
                         </div>
+                      )}
+                    </div>
+                  </motion.div>
 
-                        {testResults.salesPerformance.introduction.weaknesses.length > 0 && (
+                  {/* Sales Performance Section */}
+                  <motion.div 
+                    className="lg:col-span-3 bg-[#2d2d2d] rounded-2xl p-6 border border-[#3d3d3d] mb-6"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.5, delay: 0.3 }}
+                  >
+                    <h2 className="text-xl font-semibold mb-6 flex items-center gap-2">
+                      <ShoppingCart className="w-6 h-6 text-pink-500" />
+                      Эффективность продаж
+                    </h2>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      {/* Introduction Section */}
+                      <div className="bg-[#1a1a1a] rounded-xl p-5 border border-[#3d3d3d]">
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="flex items-center gap-2">
+                            <Users className="w-5 h-5 text-blue-500" />
+                            <h3 className="font-semibold">Знакомство</h3>
+                           </div>
+                          <div className={`px-2 py-1 rounded-full text-sm font-medium ${getScoreColorClass(testResults.salesPerformance.introduction.score)}`}>
+                            {testResults.salesPerformance.introduction.score.toFixed(1)}
+                          </div>
+                        </div>
+
+                        <div className="mb-4">
+                          <div className="flex justify-between text-sm mb-1">
+                            <span className="text-gray-400">Конверсия</span>
+                            <span className="font-medium">{testResults.salesPerformance.introduction.conversionRate}%</span>
+                          </div>
+                          <div className="h-2 bg-[#2d2d2d] rounded-full overflow-hidden">
+                            <motion.div 
+                              className={`h-full ${getProgressBarColor(testResults.salesPerformance.introduction.conversionRate)}`}
+                              initial={{ width: 0 }}
+                              animate={{ width: `${testResults.salesPerformance.introduction.conversionRate}%` }}
+                              transition={{ duration: 1, delay: 0.7 }}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-3">
                           <div>
-                            <h4 className="text-sm font-medium text-red-400 mb-2 flex items-center gap-1">
-                              <XCircle className="w-4 h-4" />
-                              Области для улучшения
+                            <h4 className="text-sm font-medium text-green-400 mb-2 flex items-center gap-1">
+                              <CheckCircle className="w-4 h-4" />
+                              Сильные стороны
                             </h4>
                             <ul className="text-sm space-y-1">
-                              {testResults.salesPerformance.introduction.weaknesses.map((weakness, idx) => (
+                              {testResults.salesPerformance.introduction.strengths.map((strength, idx) => (
                                 <li key={idx} className="text-gray-300 flex items-start gap-2">
-                                  <span className="text-red-500 mt-1">•</span>
-                                  {weakness}
+                                  <span className="text-green-500 mt-1">•</span>
+                                  {strength}
                                 </li>
                               ))}
-                            </ul>
+                             </ul>
                           </div>
-                        )}
-                      </div>
-                    </div>
 
-                    {/* Warmup Section */}
-                    <div className="bg-[#1a1a1a] rounded-xl p-5 border border-[#3d3d3d]">
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-2">
-                          <Flame className="w-5 h-5 text-orange-500" />
-                          <h3 className="font-semibold">Прогрев</h3>
-                        </div>
-                        <div className={`px-2 py-1 rounded-full text-sm font-medium ${getScoreColorClass(testResults.salesPerformance.warmup.score)}`}>
-                          {testResults.salesPerformance.warmup.score.toFixed(1)}
-                        </div>
-                      </div>
-
-                      <div className="mb-4">
-                        <div className="flex justify-between text-sm mb-1">
-                          <span className="text-gray-400">Конверсия</span>
-                          <span className="font-medium">{testResults.salesPerformance.warmup.conversionRate}%</span>
-                        </div>
-                        <div className="h-2 bg-[#2d2d2d] rounded-full overflow-hidden">
-                          <motion.div 
-                            className={`h-full ${getProgressBarColor(testResults.salesPerformance.warmup.conversionRate)}`}
-                            initial={{ width: 0 }}
-                            animate={{ width: `${testResults.salesPerformance.warmup.conversionRate}%` }}
-                            transition={{ duration: 1, delay: 0.8 }}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="space-y-3">
-                        <div>
-                          <h4 className="text-sm font-medium text-green-400 mb-2 flex items-center gap-1">
-                            <CheckCircle className="w-4 h-4" />
-                            Сильные стороны
-                          </h4>
-                          <ul className="text-sm space-y-1">
-                            {testResults.salesPerformance.warmup.strengths.map((strength, idx) => (
-                              <li key={idx} className="text-gray-300 flex items-start gap-2">
-                                <span className="text-green-500 mt-1">•</span>
-                                {strength}
-                              </li>
-                            ))}
-                           </ul>
-                        </div>
-
-                        {testResults.salesPerformance.warmup.weaknesses.length > 0 && (
-                          <div>
-                            <h4 className="text-sm font-medium text-red-400 mb-2 flex items-center gap-1">
-                              <XCircle className="w-4 h-4" />
-                              Области для улучшения
-                            </h4>
-                            <ul className="text-sm space-y-1">
-                              {testResults.salesPerformance.warmup.weaknesses.map((weakness, idx) => (
-                                <li key={idx} className="text-gray-300 flex items-start gap-2">
-                                  <span className="text-red-500 mt-1">•</span>
-                                  {weakness}
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Sales Section */}
-                    <div className="bg-[#1a1a1a] rounded-xl p-5 border border-[#3d3d3d]">
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-2">
-                          <DollarSign className="w-5 h-5 text-green-500" />
-                          <h3 className="font-semibold">Продажи</h3>
-                        </div>
-                        <div className={`px-2 py-1 rounded-full text-sm font-medium ${getScoreColorClass(testResults.salesPerformance.sales.score)}`}>
-                          {testResults.salesPerformance.sales.score.toFixed(1)}
-                        </div>
-                      </div>
-
-                      <div className="mb-4">
-                        <div className="flex justify-between text-sm mb-1">
-                          <span className="text-gray-400">Конверсия</span>
-                          <span className="font-medium">{testResults.salesPerformance.sales.conversionRate}%</span>
-                        </div>
-                        <div className="h-2 bg-[#2d2d2d] rounded-full overflow-hidden">
-                          <motion.div 
-                            className={`h-full ${getProgressBarColor(testResults.salesPerformance.sales.conversionRate)}`}
-                            initial={{ width: 0 }}
-                            animate={{ width: `${testResults.salesPerformance.sales.conversionRate}%` }}
-                            transition={{ duration: 1, delay: 0.9 }}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="space-y-3">
-                        <div>
-                          <h4 className="text-sm font-medium text-green-400 mb-2 flex items-center gap-1">
-                            <CheckCircle className="w-4 h-4" />
-                            Сильные стороны
-                          </h4>
-                          <ul className="text-sm space-y-1">
-                            {testResults.salesPerformance.sales.strengths.map((strength, idx) => (
-                              <li key={idx} className="text-gray-300 flex items-start gap-2">
-                                <span className="text-green-500 mt-1">•</span>
-                                {strength}
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-
-                        {testResults.salesPerformance.sales.weaknesses.length > 0 && (
-                          <div>
-                            <h4 className="text-sm font-medium text-red-400 mb-2 flex items-center gap-1">
-                              <XCircle className="w-4 h-4" />
-                              Области для улучшения
-                            </h4>
-                            <ul className="text-sm space-y-1">
-                              {testResults.salesPerformance.sales.weaknesses.map((weakness, idx) => (
-                                <li key={idx} className="text-gray-300 flex items-start gap-2">
-                                  <span className="text-red-500 mt-1">•</span>
-                                  {weakness}
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </motion.div>
-
-                {/* Recommendations */}
-                <motion.div 
-                  className="bg-[#2d2d2d] rounded-2xl p-6 border border-[#3d3d3d]"
-                  variants={fadeInVariants}
-                  initial="hidden"
-                  animate="visible"
-                >
-                  <h3 className="text-xl font-semibold mb-6">Рекомендации</h3>
-                  
-                  <div className="space-y-4">
-                    {testResults.recommendations.map((rec, index) => (
-                      <div key={index} className="flex items-start gap-3">
-                        <div className="w-6 h-6 rounded-full bg-gradient-to-r from-pink-500 to-purple-500 flex items-center justify-center flex-shrink-0">
-                          <span className="text-sm font-bold">{index + 1}</span>
-                        </div>
-                        <p className="text-gray-300">{rec}</p>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="mt-8 space-y-4">
-                    <h4 className="text-lg font-medium">Действия</h4>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <button className="flex items-center justify-center gap-2 p-3 bg-[#1a1a1a] rounded-lg border border-[#3d3d3d] hover:bg-[#3d3d3d] transition-colors">
-                        <Download className="w-5 h-5 text-blue-400" />
-                        <span>Скачать отчет</span>
-                      </button>
-                      <button className="flex items-center justify-center gap-2 p-3 bg-[#1a1a1a] rounded-lg border border-[#3d3d3d] hover:bg-[#3d3d3d] transition-colors">
-                        <Share2 className="w-5 h-5 text-green-400" />
-                        <span>Поделиться</span>
-                      </button>
-                      <button className="flex items-center justify-center gap-2 p-3 bg-[#1a1a1a] rounded-lg border border-[#3d3d3d] hover:bg-[#3d3d3d] transition-colors sm:col-span-2">
-                        <Printer className="w-5 h-5 text-purple-400" />
-                        <span>Распечатать результаты</span>
-                      </button>
-                    </div>
-                  </div>
-                </motion.div>
-
-                {/* Dialogue History */}
-                <motion.div 
-                  className="lg:col-span-2 bg-[#2d2d2d] rounded-2xl p-6 border border-[#3d3d3d]"
-                  variants={fadeInVariants}
-                  initial="hidden"
-                  animate="visible"
-                >
-                  <h3 className="text-xl font-semibold mb-6 flex items-center gap-2">
-                    <MessageCircle className="w-5 h-5 text-purple-500" />
-                    История диалогов
-                  </h3>
-
-                  {dialogues.length > 0 ? (
-                    <div className="space-y-6">
-                      {/* Dialog List */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        {dialogues.map((dialogue) => (
-                          <div 
-                            key={dialogue.id} 
-                            className={`p-4 rounded-lg border ${selectedDialogue === dialogue.id ? 'bg-[#3d3d3d] border-purple-500' : 'bg-[#1a1a1a] border-[#3d3d3d] hover:bg-[#262626] hover:border-[#4d4d4d]'} cursor-pointer transition-colors`}
-                            onClick={() => setSelectedDialogue(dialogue.id)}
-                          >
-                            <div className="flex justify-between items-start mb-3">
-                                <h4 className="font-medium">{dialogue.title}</h4>
-                              <span className="text-xs px-2 py-1 rounded-full bg-[#2d2d2d] text-gray-300">{dialogue.date}</span>
+                          {testResults.salesPerformance.introduction.weaknesses.length > 0 && (
+                            <div>
+                              <h4 className="text-sm font-medium text-red-400 mb-2 flex items-center gap-1">
+                                <XCircle className="w-4 h-4" />
+                                Области для улучшения
+                              </h4>
+                              <ul className="text-sm space-y-1">
+                                {testResults.salesPerformance.introduction.weaknesses.map((weakness, idx) => (
+                                  <li key={idx} className="text-gray-300 flex items-start gap-2">
+                                    <span className="text-red-500 mt-1">•</span>
+                                    {weakness}
+                                  </li>
+                                ))}
+                              </ul>
                             </div>
-                            <div className="flex items-center justify-between text-sm text-gray-400">
-                              <span>{dialogue.duration}</span>
-                              {dialogue.messages && dialogue.messages.length > 0 ? (
-                                <span className="flex items-center gap-1">
-                                  <MessageCircle className="w-4 h-4" />
-                                  {dialogue.messages.length} сообщений
-                                </span>
-                              ) : (
-                                <span className="text-yellow-500 flex items-center gap-1">
-                                  <AlertCircle className="w-4 h-4" />
-                                  Нет сообщений
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        ))}
+                          )}
+                        </div>
                       </div>
 
-                      {/* Selected Dialog */}
-                      {selectedDialogue && (
-                        <div className="mt-6 bg-[#1a1a1a] rounded-lg border border-[#3d3d3d] p-4">
-                          <h4 className="font-medium mb-4">
-                            {dialogues.find(d => d.id === selectedDialogue)?.title || 'Диалог'}
-                          </h4>
-                          
-                          <div className="space-y-4">
-                            {selectedDialogue && 
-                             dialogues.find(d => d.id === selectedDialogue) && 
-                             dialogues.find(d => d.id === selectedDialogue)?.messages?.length > 0 ? (
-                              (() => {
+                      {/* Warmup Section */}
+                      <div className="bg-[#1a1a1a] rounded-xl p-5 border border-[#3d3d3d]">
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="flex items-center gap-2">
+                            <Flame className="w-5 h-5 text-orange-500" />
+                            <h3 className="font-semibold">Прогрев</h3>
+                          </div>
+                          <div className={`px-2 py-1 rounded-full text-sm font-medium ${getScoreColorClass(testResults.salesPerformance.warmup.score)}`}>
+                            {testResults.salesPerformance.warmup.score.toFixed(1)}
+                          </div>
+                        </div>
+
+                        <div className="mb-4">
+                          <div className="flex justify-between text-sm mb-1">
+                            <span className="text-gray-400">Конверсия</span>
+                            <span className="font-medium">{testResults.salesPerformance.warmup.conversionRate}%</span>
+                          </div>
+                          <div className="h-2 bg-[#2d2d2d] rounded-full overflow-hidden">
+                            <motion.div 
+                              className={`h-full ${getProgressBarColor(testResults.salesPerformance.warmup.conversionRate)}`}
+                              initial={{ width: 0 }}
+                              animate={{ width: `${testResults.salesPerformance.warmup.conversionRate}%` }}
+                              transition={{ duration: 1, delay: 0.8 }}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-3">
+                          <div>
+                            <h4 className="text-sm font-medium text-green-400 mb-2 flex items-center gap-1">
+                              <CheckCircle className="w-4 h-4" />
+                              Сильные стороны
+                            </h4>
+                            <ul className="text-sm space-y-1">
+                              {testResults.salesPerformance.warmup.strengths.map((strength, idx) => (
+                                <li key={idx} className="text-gray-300 flex items-start gap-2">
+                                  <span className="text-green-500 mt-1">•</span>
+                                  {strength}
+                                </li>
+                              ))}
+                             </ul>
+                          </div>
+
+                          {testResults.salesPerformance.warmup.weaknesses.length > 0 && (
+                            <div>
+                              <h4 className="text-sm font-medium text-red-400 mb-2 flex items-center gap-1">
+                                <XCircle className="w-4 h-4" />
+                                Области для улучшения
+                              </h4>
+                              <ul className="text-sm space-y-1">
+                                {testResults.salesPerformance.warmup.weaknesses.map((weakness, idx) => (
+                                  <li key={idx} className="text-gray-300 flex items-start gap-2">
+                                    <span className="text-red-500 mt-1">•</span>
+                                    {weakness}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Sales Section */}
+                      <div className="bg-[#1a1a1a] rounded-xl p-5 border border-[#3d3d3d]">
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="flex items-center gap-2">
+                            <DollarSign className="w-5 h-5 text-green-500" />
+                            <h3 className="font-semibold">Продажи</h3>
+                          </div>
+                          <div className={`px-2 py-1 rounded-full text-sm font-medium ${getScoreColorClass(testResults.salesPerformance.sales.score)}`}>
+                            {testResults.salesPerformance.sales.score.toFixed(1)}
+                          </div>
+                        </div>
+
+                        <div className="mb-4">
+                          <div className="flex justify-between text-sm mb-1">
+                            <span className="text-gray-400">Конверсия</span>
+                            <span className="font-medium">{testResults.salesPerformance.sales.conversionRate}%</span>
+                          </div>
+                          <div className="h-2 bg-[#2d2d2d] rounded-full overflow-hidden">
+                            <motion.div 
+                              className={`h-full ${getProgressBarColor(testResults.salesPerformance.sales.conversionRate)}`}
+                              initial={{ width: 0 }}
+                              animate={{ width: `${testResults.salesPerformance.sales.conversionRate}%` }}
+                              transition={{ duration: 1, delay: 0.9 }}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-3">
+                          <div>
+                            <h4 className="text-sm font-medium text-green-400 mb-2 flex items-center gap-1">
+                              <CheckCircle className="w-4 h-4" />
+                              Сильные стороны
+                            </h4>
+                            <ul className="text-sm space-y-1">
+                              {testResults.salesPerformance.sales.strengths.map((strength, idx) => (
+                                <li key={idx} className="text-gray-300 flex items-start gap-2">
+                                  <span className="text-green-500 mt-1">•</span>
+                                  {strength}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+
+                          {testResults.salesPerformance.sales.weaknesses.length > 0 && (
+                            <div>
+                              <h4 className="text-sm font-medium text-red-400 mb-2 flex items-center gap-1">
+                                <XCircle className="w-4 h-4" />
+                                Области для улучшения
+                              </h4>
+                              <ul className="text-sm space-y-1">
+                                {testResults.salesPerformance.sales.weaknesses.map((weakness, idx) => (
+                                  <li key={idx} className="text-gray-300 flex items-start gap-2">
+                                    <span className="text-red-500 mt-1">•</span>
+                                    {weakness}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </motion.div>
+
+                  {/* Recommendations */}
+                  <motion.div 
+                    className="bg-[#2d2d2d] rounded-2xl p-6 border border-[#3d3d3d]"
+                    variants={fadeInVariants}
+                    initial="hidden"
+                    animate="visible"
+                  >
+                    <h3 className="text-xl font-semibold mb-6">Рекомендации</h3>
+                    
+                    <div className="space-y-4">
+                      {testResults.recommendations.map((rec, index) => (
+                        <div key={index} className="flex items-start gap-3">
+                          <div className="w-6 h-6 rounded-full bg-gradient-to-r from-pink-500 to-purple-500 flex items-center justify-center flex-shrink-0">
+                            <span className="text-sm font-bold">{index + 1}</span>
+                          </div>
+                          <p className="text-gray-300">{rec}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="mt-8 space-y-4">
+                      <h4 className="text-lg font-medium">Действия</h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <button className="flex items-center justify-center gap-2 p-3 bg-[#1a1a1a] rounded-lg border border-[#3d3d3d] hover:bg-[#3d3d3d] transition-colors">
+                          <Download className="w-5 h-5 text-blue-400" />
+                          <span>Скачать отчет</span>
+                        </button>
+                        <button className="flex items-center justify-center gap-2 p-3 bg-[#1a1a1a] rounded-lg border border-[#3d3d3d] hover:bg-[#3d3d3d] transition-colors">
+                          <Share2 className="w-5 h-5 text-green-400" />
+                          <span>Поделиться</span>
+                        </button>
+                        <button className="flex items-center justify-center gap-2 p-3 bg-[#1a1a1a] rounded-lg border border-[#3d3d3d] hover:bg-[#3d3d3d] transition-colors sm:col-span-2">
+                          <Printer className="w-5 h-5 text-purple-400" />
+                          <span>Распечатать результаты</span>
+                        </button>
+                      </div>
+                    </div>
+                  </motion.div>
+
+                  {/* Dialogue History */}
+                  <motion.div 
+                    className="lg:col-span-2 bg-[#2d2d2d] rounded-2xl p-6 border border-[#3d3d3d]"
+                    variants={fadeInVariants}
+                    initial="hidden"
+                    animate="visible"
+                  >
+                    <h3 className="text-xl font-semibold mb-6 flex items-center gap-2">
+                      <MessageCircle className="w-5 h-5 text-purple-500" />
+                      История диалогов
+                    </h3>
+
+                    {dialogues.length > 0 ? (
+                      <div className="space-y-6">
+                        {/* Dialog List */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          {dialogues.map((dialogue) => (
+                            <div 
+                              key={dialogue.id} 
+                              className={`p-4 rounded-lg border ${selectedDialogue === dialogue.id ? 'bg-[#3d3d3d] border-purple-500' : 'bg-[#1a1a1a] border-[#3d3d3d] hover:bg-[#262626] hover:border-[#4d4d4d]'} cursor-pointer transition-colors`}
+                              onClick={() => setSelectedDialogue(dialogue.id)}
+                            >
+                              <div className="flex justify-between items-start mb-3">
+                                  <h4 className="font-medium">{dialogue.title}</h4>
+                                <span className="text-xs px-2 py-1 rounded-full bg-[#2d2d2d] text-gray-300">{dialogue.date}</span>
+                              </div>
+                              <div className="flex items-center justify-between text-sm text-gray-400">
+                                <span>{dialogue.duration}</span>
+                                {dialogue.messages && dialogue.messages.length > 0 ? (
+                                  <span className="flex items-center gap-1">
+                                    <MessageCircle className="w-4 h-4" />
+                                    {dialogue.messages.length} сообщений
+                                  </span>
+                                ) : (
+                                  <span className="text-yellow-500 flex items-center gap-1">
+                                    <AlertCircle className="w-4 h-4" />
+                                    Нет сообщений
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Selected Dialog */}
+                        {selectedDialogue && dialogues.length > 0 && (
+                          <div className="mt-6 bg-[#1a1a1a] rounded-lg border border-[#3d3d3d] p-4">
+                            <h4 className="font-medium mb-4">
+                              {dialogues.find(d => d.id === selectedDialogue)?.title || 'Диалог'}
+                            </h4>
+                            
+                            <div className="space-y-4">
+                              {(() => {
                                 // Получаем объект диалога, чтобы не выполнять поиск многократно
                                 const currentDialogue = dialogues.find(d => d.id === selectedDialogue);
-                                if (!currentDialogue) return null;
+                                
+                                if (!currentDialogue || !currentDialogue.messages || currentDialogue.messages.length === 0) {
+                                  return (
+                                    <div className="text-center py-8 text-gray-400">
+                                      <AlertCircle className="w-10 h-10 mx-auto mb-2 text-yellow-500" />
+                                      <p>В этом диалоге пока нет сообщений.</p>
+                                    </div>
+                                  );
+                                }
                                 
                                 // Добавляем отладочную информацию в консоль
                                 console.log("Отображаем диалог:", 
@@ -1302,57 +1432,97 @@ function TestResultsAdmin() {
                                     </div>
                                   );
                                 });
-                              })()
-                            ) : (
-                              <div className="text-center py-8 text-gray-400">
-                                <AlertCircle className="w-10 h-10 mx-auto mb-2 text-yellow-500" />
-                                <p>В этом диалоге пока нет сообщений.</p>
-                              </div>
-                            )}
+                              })()}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-center py-12 bg-[#1a1a1a] rounded-lg border border-[#3d3d3d]">
+                        <AlertCircle className="w-12 h-12 mx-auto mb-4 text-yellow-500" />
+                        <h4 className="text-xl font-medium mb-2">История диалогов отсутствует</h4>
+                        <p className="text-gray-400 mb-4">Для данной сессии не найдены диалоги.</p>
+                        
+                        <div className="max-w-lg mx-auto text-left bg-[#262626] p-4 rounded-lg border border-[#3d3d3d]">
+                          <h5 className="font-medium mb-2 flex items-center gap-2">
+                            <AlertCircle className="w-5 h-5 text-yellow-500" />
+                            Диагностика данных
+                          </h5>
+                          <ul className="space-y-2 text-sm">
+                            <li className="flex items-start gap-2">
+                              <span className="text-yellow-500 mt-1">•</span>
+                              <span>ID сессии: <code className="bg-[#1a1a1a] px-1 py-0.5 rounded">{sessionId || 'отсутствует'}</code></span>
+                            </li>
+                            <li className="flex items-start gap-2">
+                              <span className="text-yellow-500 mt-1">•</span>
+                              <span>Чаты: {chats.length ? `${chats.length} (все пустые)` : 'не найдены'}</span>
+                            </li>
+                            <li className="flex items-start gap-2">
+                              <span className="text-yellow-500 mt-1">•</span>
+                              <span>Анализ: {testResult ? 'доступен' : 'отсутствует'}</span>
+                            </li>
+                          </ul>
+                          
+                          <div className="mt-4 text-xs text-gray-400">
+                            <p>Возможные причины проблемы:</p>
+                            <ol className="list-decimal pl-5 mt-1 space-y-1">
+                              <li>Тестовая сессия не была завершена</li>
+                              <li>Сообщения не были добавлены в чаты</li>
+                              <li>Результаты анализа не были сгенерированы</li>
+                            </ol>
                           </div>
                         </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="text-center py-12 bg-[#1a1a1a] rounded-lg border border-[#3d3d3d]">
-                      <AlertCircle className="w-12 h-12 mx-auto mb-4 text-yellow-500" />
-                      <h4 className="text-xl font-medium mb-2">История диалогов отсутствует</h4>
-                      <p className="text-gray-400 mb-4">Для данной сессии не найдены диалоги.</p>
-                      
-                      <div className="max-w-lg mx-auto text-left bg-[#262626] p-4 rounded-lg border border-[#3d3d3d]">
-                        <h5 className="font-medium mb-2 flex items-center gap-2">
-                          <AlertCircle className="w-5 h-5 text-yellow-500" />
-                          Диагностика данных
-                        </h5>
-                        <ul className="space-y-2 text-sm">
-                          <li className="flex items-start gap-2">
-                            <span className="text-yellow-500 mt-1">•</span>
-                            <span>ID сессии: <code className="bg-[#1a1a1a] px-1 py-0.5 rounded">{sessionId || 'отсутствует'}</code></span>
-                          </li>
-                          <li className="flex items-start gap-2">
-                            <span className="text-yellow-500 mt-1">•</span>
-                            <span>Чаты: {chats.length ? `${chats.length} (все пустые)` : 'не найдены'}</span>
-                          </li>
-                          <li className="flex items-start gap-2">
-                            <span className="text-yellow-500 mt-1">•</span>
-                            <span>Анализ: {testResult ? 'доступен' : 'отсутствует'}</span>
-                          </li>
-                        </ul>
-                        
-                        <div className="mt-4 text-xs text-gray-400">
-                          <p>Возможные причины проблемы:</p>
-                          <ol className="list-decimal pl-5 mt-1 space-y-1">
-                            <li>Тестовая сессия не была завершена</li>
-                            <li>Сообщения не были добавлены в чаты</li>
-                            <li>Результаты анализа не были сгенерированы</li>
-                          </ol>
-                        </div>
                       </div>
-                    </div>
-                  )}
-                </motion.div>
+                    )}
+                  </motion.div>
+                </div>
               </div>
-            </div>
+            ) : warning ? (
+              <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <AlertCircle className="w-8 h-8 text-yellow-500" />
+                  <h3 className="text-xl font-semibold">Предупреждение</h3>
+                </div>
+                <p className="text-gray-400 mb-6">{warning}</p>
+                
+                {dialogues.length > 0 && (
+                  <div className="bg-[#2d2d2d] rounded-xl p-6 border border-[#3d3d3d] mt-4">
+                    <h3 className="text-xl font-semibold mb-6 flex items-center gap-2">
+                      <MessageCircle className="w-5 h-5 text-purple-500" />
+                      История диалогов
+                    </h3>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {dialogues.map((dialogue) => (
+                        <div 
+                          key={dialogue.id} 
+                          className="bg-[#1a1a1a] p-4 rounded-lg border border-[#3d3d3d] hover:bg-[#262626] hover:border-[#4d4d4d] cursor-pointer transition-colors"
+                          onClick={() => setSelectedDialogue(dialogue.id)}
+                        >
+                          <div className="flex justify-between items-start mb-3">
+                            <h4 className="font-medium">{dialogue.title}</h4>
+                            <span className="text-xs px-2 py-1 rounded-full bg-[#2d2d2d] text-gray-300">{dialogue.date}</span>
+                          </div>
+                          <div className="flex items-center justify-between text-sm text-gray-400">
+                            <span>{dialogue.duration}</span>
+                            <span className="flex items-center gap-1">
+                              <MessageCircle className="w-4 h-4" />
+                              {dialogue.messages?.length || 0} сообщений
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="text-center py-12 bg-[#1a1a1a] rounded-lg border border-[#3d3d3d]">
+                <AlertCircle className="w-12 h-12 mx-auto mb-4 text-yellow-500" />
+                <h4 className="text-xl font-medium mb-2">Данные не найдены</h4>
+                <p className="text-gray-400 mb-4">Не удалось загрузить данные для этой сессии.</p>
+              </div>
+            )}
           </>
         )}
       </div>

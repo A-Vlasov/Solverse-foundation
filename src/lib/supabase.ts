@@ -796,31 +796,35 @@ export async function getRecentTestSessions(limit: number = 20): Promise<TestSes
 }
 
 export async function getEmployeeTestSessions(employeeId: string): Promise<TestSession[]> {
+  if (!employeeId) {
+    console.error('[getEmployeeTestSessions] Ошибка: Пустой ID сотрудника');
+    return [];
+  }
+  
+  console.log('[getEmployeeTestSessions] Запрос сессий для сотрудника:', employeeId);
+  
   try {
     const { data, error } = await supabase
       .from('test_sessions')
-      .select(`
-        *,
-        employee:employees (
-          first_name
-        ),
-        chats (
-          id,
-          chat_number,
-          messages
-        )
-      `)
+      .select('*, employee:employees(*)')
       .eq('employee_id', employeeId)
       .order('created_at', { ascending: false });
-
+      
     if (error) {
-      console.error('Error fetching employee test sessions:', error);
+      console.error('[getEmployeeTestSessions] Ошибка при получении сессий:', error);
       throw error;
     }
-
-    return data || [];
+    
+    if (!data || data.length === 0) {
+      console.log('[getEmployeeTestSessions] Сессии не найдены для сотрудника:', employeeId);
+      return [];
+    }
+    
+    console.log('[getEmployeeTestSessions] Успешно получено сессий:', data.length);
+    
+    return data;
   } catch (error) {
-    console.error('Error in getEmployeeTestSessions:', error);
+    console.error('[getEmployeeTestSessions] Критическая ошибка:', error);
     throw error;
   }
 }
@@ -935,27 +939,27 @@ export async function getTestSessionChats(sessionId: string): Promise<Chat[]> {
   }
 }
 
-export async function getChatHistory(testSessionId: string): Promise<Chat[]> {
+export async function getChatHistory(sessionId: string): Promise<Chat[]> {
   try {
-    console.log('Fetching chat history for session:', testSessionId);
+    console.log('Fetching chat history for session:', sessionId);
+    
+    if (!sessionId) {
+      console.error('Empty sessionId provided to getChatHistory');
+      return [];
+    }
     
     const { data, error } = await supabase
       .from('chats')
       .select('*')
-      .eq('test_session_id', testSessionId)
+      .eq('test_session_id', sessionId)
       .order('chat_number', { ascending: true });
-
+      
     if (error) {
       console.error('Error fetching chat history:', error);
       throw error;
     }
-
-    if (!data) {
-      console.log('No chat history found');
-      return [];
-    }
-
-    console.log('Chat history fetched successfully:', data);
+    
+    console.log(`Fetched ${data.length} chats for session:`, sessionId);
     return data;
   } catch (error) {
     console.error('Error in getChatHistory:', error);
@@ -963,30 +967,48 @@ export async function getChatHistory(testSessionId: string): Promise<Chat[]> {
   }
 }
 
-export async function getTestSession(sessionId: string): Promise<TestSession> {
+export async function getTestSession(sessionId: string): Promise<TestSession | null> {
+  if (!sessionId) {
+    console.error('[getTestSession] Ошибка: Пустой ID сессии');
+    return null;
+  }
+  
+  // Проверка валидности UUID
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sessionId)) {
+    console.error('[getTestSession] Ошибка: Невалидный формат UUID:', sessionId);
+    return null;
+  }
+  
+  console.log('[getTestSession] Запрос сессии:', sessionId);
+  
   try {
-    console.log('Fetching test session:', { sessionId });
-    
     const { data, error } = await supabase
       .from('test_sessions')
-      .select('*, employee:employee_id(*)')
+      .select('*, employee:employees(*)')
       .eq('id', sessionId)
       .single();
-
+      
     if (error) {
-      console.error('Error fetching test session:', error);
-      throw new Error(`Failed to fetch test session: ${error.message}`);
+      if (error.code === 'PGRST116') {
+        console.log('[getTestSession] Сессия не найдена:', sessionId);
+        return null;
+      }
+      console.error('[getTestSession] Ошибка при получении сессии:', error);
+      throw error;
     }
-
+    
     if (!data) {
-      console.error('No test session found with ID:', sessionId);
-      throw new Error('Test session not found');
+      console.log('[getTestSession] Сессия не найдена (пустые данные):', sessionId);
+      return null;
     }
-
-    console.log('Test session fetched successfully:', data);
+    
+    console.log('[getTestSession] Сессия успешно получена:', data.id);
+    console.log('[getTestSession] Данные сотрудника:', data.employee ? 
+      `ID=${data.employee.id}, имя=${data.employee.first_name}` : 'отсутствуют');
+    
     return data;
   } catch (error) {
-    console.error('Error in getTestSession:', error);
+    console.error('[getTestSession] Критическая ошибка:', error);
     throw error;
   }
 }
@@ -1106,8 +1128,20 @@ export async function saveTestResult(testResult: Omit<TestResult, 'id' | 'create
  */
 export async function getTestResultForSession(sessionId: string): Promise<TestResult | null> {
   try {
-    console.log('Fetching test result for session:', sessionId);
+    console.log('[getTestResultForSession] Начало запроса для сессии:', sessionId);
     
+    if (!sessionId) {
+      console.error('[getTestResultForSession] Ошибка: Пустой ID сессии');
+      return null;
+    }
+    
+    // Проверка валидности UUID
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sessionId)) {
+      console.error('[getTestResultForSession] Ошибка: Невалидный формат UUID:', sessionId);
+      return null;
+    }
+    
+    console.log('[getTestResultForSession] Выполняем запрос к базе данных...');
     const { data, error } = await supabase
       .from('test_results')
       .select('*')
@@ -1117,17 +1151,25 @@ export async function getTestResultForSession(sessionId: string): Promise<TestRe
     if (error) {
       if (error.code === 'PGRST116') {
         // Результат не найден
-        console.log('No test result found for session:', sessionId);
+        console.log('[getTestResultForSession] Результат теста не найден для сессии:', sessionId);
         return null;
       }
-      console.error('Error fetching test result:', error);
+      console.error('[getTestResultForSession] Ошибка при получении результата теста:', error);
       throw error;
     }
     
-    console.log('Test result fetched successfully:', data);
+    if (!data) {
+      console.log('[getTestResultForSession] Результат теста не найден (пустые данные) для сессии:', sessionId);
+      return null;
+    }
+    
+    console.log('[getTestResultForSession] Результат успешно получен. ID результата:', data.id);
+    console.log('[getTestResultForSession] Проверка анализа:', 
+      data.analysis_result ? 'Анализ доступен' : 'Анализ отсутствует');
+    
     return data;
   } catch (error) {
-    console.error('Error in getTestResultForSession:', error);
+    console.error('[getTestResultForSession] Критическая ошибка:', error);
     throw error;
   }
 }

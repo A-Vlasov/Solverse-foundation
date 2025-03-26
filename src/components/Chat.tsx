@@ -3,9 +3,15 @@ import { MessageCircle, Send, Menu, Bell, Settings, Search, Heart, Image, AtSign
 import { useNavigation, useParams } from '../../app/components/SimpleNavigation';
 import { userPrompts, getPromptSummary } from '../data/userPrompts';
 import PromptModal from './PromptModal';
-import type { DialogAnalysisResult, ChatMessage as SupabaseChatMessage } from '../lib/supabase';
+import type { DialogAnalysisResult, ChatMessage as SupabaseChatMessage, TestResult } from '../lib/supabase';
 // Импортируем сервисы для API
 import { chatService, testSessionService, testResultService, grokService } from '../services/api';
+// Добавляем импорт функций для работы с сессиями и результатами тестов
+import { getTestSession, saveTestResult } from '../lib/supabase';
+
+import { TypingIndicator } from './TypingIndicator';
+import { BoughtIndicator } from './BoughtIndicator';
+import { ChatMessage } from '../lib/supabase';
 
 // Типы для использования в Chat компоненте
 type MessageRoleInternal = 'user' | 'assistant' | 'system';
@@ -1233,72 +1239,137 @@ function Chat() {
   const analyzeDialogsAndSaveResults = async (sessionId: string) => {
     // Проверяем, не выполняется ли уже анализ для этой сессии
     if (activeAnalysisSessions.has(sessionId)) {
-      console.log(`Analysis already in progress for session ${sessionId}, skipping duplicate request`);
+      console.log(`Анализ уже выполняется для сессии ${sessionId}, пропускаем дублирующий запрос`);
       return;
     }
 
     // Добавляем сессию в список активных
     activeAnalysisSessions.add(sessionId);
-    console.log(`Starting analysis for session ${sessionId}. Total active analyses: ${activeAnalysisSessions.size}`);
+    console.log(`Начинаем анализ для сессии ${sessionId}. Всего активных анализов: ${activeAnalysisSessions.size}`);
+
+    // Устанавливаем состояние вычисления результатов
+    setCalculatingResults(true);
 
     try {
-      console.log('Starting dialog analysis for session:', sessionId);
+      console.log('Начинаем анализ диалогов для сессии:', sessionId);
       
-      // Используем API для анализа
-      const result = await testResultService.analyze(sessionId, '');  // employeeId получаем на сервере
+      // Получаем информацию о сессии для привязки к сотруднику
+      console.log('Получаем информацию о сессии');
+      const session = await getTestSession(sessionId);
       
-      // Если удалось получить результат анализа
-      if (result && result.analysisResult) {
-        // Сохраняем результат в состоянии
-        setAnalysisResult(result.analysisResult);
-        setAnalysisComplete(true);
-        console.log('Analysis completed and results saved');
-      } else {
-        console.error('No valid analysis result found in response');
+      if (!session) {
+        throw new Error('Сессия не найдена');
+      }
+      
+      console.log('Сессия найдена:', session.id, 'Сотрудник:', session.employee_id);
+      
+      // Создаем базовую запись с результатами для сохранения в любом случае
+      const defaultResult: DialogAnalysisResult = {
+        dialog_analysis: {
+          metrics: {
+            engagement: { score: 3.0, verdict: "Базовый результат" },
+            charm_and_tone: { score: 3.0, verdict: "Базовый результат" },
+            creativity: { score: 3.0, verdict: "Базовый результат" },
+            adaptability: { score: 3.0, verdict: "Базовый результат" },
+            self_promotion: { score: 3.0, verdict: "Базовый результат" },
+            pricing_policy: { score: 3.0, verdict: "Базовый результат", strengths: [], improvements: [] },
+            sales_stages: {
+              introduction: { score: 3.0, strengths: [], weaknesses: [] },
+              warmup: { score: 3.0, strengths: [], weaknesses: [] },
+              closing: { score: 3.0, strengths: [], weaknesses: [] }
+            }
+          },
+          overall_conclusion: "Базовый результат анализа.",
+          result_summary: "Базовый результат анализа без использования AI."
+        }
+      };
+      
+      try {
+        // Используем API для анализа
+        console.log('Вызываем API для анализа диалогов');
+        const result = await testResultService.analyze(sessionId, session.employee_id);
         
-        // Создаем базовый результат анализа, чтобы избежать отображения ошибки
-        const defaultResult: DialogAnalysisResult = {
+        console.log('Результат анализа получен:', result ? 'Успешно' : 'Ошибка');
+        
+        // Если удалось получить результат анализа
+        if (result && result.analysisResult) {
+          // Сохраняем результат в состоянии
+          setAnalysisResult(result.analysisResult);
+          setAnalysisComplete(true);
+          console.log('Анализ завершен и результаты сохранены');
+          
+          // Результат уже сохранен через API, нет необходимости сохранять еще раз
+          return;
+        } else {
+          console.warn('В ответе отсутствует валидный результат анализа');
+        }
+      } catch (apiError) {
+        console.error('Ошибка при вызове API для анализа:', apiError);
+        
+        // Продолжаем выполнение, чтобы сохранить хотя бы базовые результаты
+      }
+      
+      // Если анализ не удался, сохраняем базовую запись
+      console.log('Сохраняем базовые результаты теста без данных анализа');
+      try {
+        // Расчет среднего значения для overall_score
+        const metrics = defaultResult.dialog_analysis.metrics;
+        const scores = [
+          metrics.engagement.score,
+          metrics.charm_and_tone.score,
+          metrics.creativity.score,
+          metrics.adaptability.score,
+          metrics.self_promotion.score,
+          metrics.pricing_policy.score
+        ];
+        const overallScore = scores.reduce((sum, score) => sum + score, 0) / scores.length;
+        
+        // Сохраняем базовую запись через прямой вызов функции
+        await saveTestResult({
+          test_session_id: sessionId,
+          employee_id: session.employee_id,
+          raw_prompt: "Анализ не выполнен",
+          analysis_result: defaultResult,
+          engagement_score: metrics.engagement.score,
+          charm_tone_score: metrics.charm_and_tone.score,
+          creativity_score: metrics.creativity.score,
+          adaptability_score: metrics.adaptability.score,
+          self_promotion_score: metrics.self_promotion.score,
+          pricing_policy_score: metrics.pricing_policy.score,
+          overall_score: overallScore
+        });
+        
+        console.log('Создана базовая запись с результатами теста');
+        
+        // Устанавливаем результат по умолчанию для отображения в UI
+        setAnalysisResult(defaultResult);
+        setAnalysisComplete(true);
+      } catch (saveError) {
+        console.error('Не удалось сохранить базовые результаты теста:', saveError);
+        
+        // Создаем результат для ошибки в UI
+        const errorResult: DialogAnalysisResult = {
           dialog_analysis: {
             metrics: {
-              engagement: { score: 3.0, verdict: "Результат по умолчанию" },
-              charm_and_tone: { score: 3.0, verdict: "Результат по умолчанию" },
-              creativity: { score: 3.0, verdict: "Результат по умолчанию" },
-              adaptability: { score: 3.0, verdict: "Результат по умолчанию" },
-              self_promotion: { score: 3.0, verdict: "Результат по умолчанию" },
-              pricing_policy: { score: 3.0, verdict: "Результат по умолчанию", strengths: [], improvements: [] }
+              engagement: { score: 3.0, verdict: "Ошибка сохранения" },
+              charm_and_tone: { score: 3.0, verdict: "Ошибка сохранения" },
+              creativity: { score: 3.0, verdict: "Ошибка сохранения" },
+              adaptability: { score: 3.0, verdict: "Ошибка сохранения" },
+              self_promotion: { score: 3.0, verdict: "Ошибка сохранения" },
+              pricing_policy: { score: 3.0, verdict: "Ошибка сохранения", strengths: [], improvements: [] }
             },
-            overall_conclusion: "Автоматический анализ не удался, поэтому отображены результаты по умолчанию."
+            overall_conclusion: "Произошла ошибка при сохранении результатов анализа."
           }
         };
         
-        // Устанавливаем результат по умолчанию
-        setAnalysisResult(defaultResult);
+        // Устанавливаем результат ошибки в UI
+        setAnalysisResult(errorResult);
         setAnalysisComplete(true);
-        
-        // Даже если анализ не удался, сохраняем базовую запись через API
-        try {
-          console.log('Saving basic test result without analysis data');
-          await testResultService.save({
-            test_session_id: sessionId,
-            // Не указываем employee_id, он будет определен на сервере
-            raw_prompt: "Анализ не выполнен",
-            analysis_result: defaultResult,
-            engagement_score: 3.0,
-            charm_score: 3.0,
-            creativity_score: 3.0,
-            adaptability_score: 3.0,
-            self_promotion_score: 3.0,
-            pricing_policy_score: 3.0
-          });
-          console.log('Created basic test result record with default data');
-        } catch (saveError) {
-          console.error('Failed to save basic test result:', saveError);
-        }
       }
     } catch (error) {
-      console.error('Error in analyzeDialogsAndSaveResults:', error);
+      console.error('Ошибка в analyzeDialogsAndSaveResults:', error);
       
-      // Создаем результат при ошибке анализа
+      // Отображаем ошибку в UI
       const errorResult: DialogAnalysisResult = {
         dialog_analysis: {
           metrics: {
@@ -1313,7 +1384,7 @@ function Chat() {
         }
       };
       
-      // Устанавливаем результат при ошибке
+      // Устанавливаем результат ошибки в UI
       setAnalysisResult(errorResult);
       setAnalysisComplete(true);
     } finally {
@@ -1322,7 +1393,7 @@ function Chat() {
       
       // Удаляем сессию из списка активных
       activeAnalysisSessions.delete(sessionId);
-      console.log(`Completed analysis for session ${sessionId}. Remaining active analyses: ${activeAnalysisSessions.size}`);
+      console.log(`Анализ для сессии ${sessionId} завершен. Осталось активных анализов: ${activeAnalysisSessions.size}`);
     }
   };
 
@@ -1539,7 +1610,7 @@ function Chat() {
   };
 
   // Обработчик для загрузки файлов
-  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     
@@ -1646,15 +1717,15 @@ function Chat() {
                         <div className="flex justify-between mb-2">
                           <span className="text-gray-400">Общий рейтинг:</span>
                           <span className="text-green-500 font-semibold">
-                        {analysisResult ? (
-                          ((
-                              analysisResult.dialog_analysis.metrics.engagement.score +
-                              analysisResult.dialog_analysis.metrics.charm_and_tone.score +
-                              analysisResult.dialog_analysis.metrics.creativity.score +
-                              analysisResult.dialog_analysis.metrics.adaptability.score +
-                              analysisResult.dialog_analysis.metrics.self_promotion.score
-                          ) / 5).toFixed(1)
-                        ) : '3.0'} / 5
+                            {analysisResult && analysisResult.dialog_analysis && analysisResult.dialog_analysis.metrics ? (
+                              ((
+                                (analysisResult.dialog_analysis.metrics.engagement?.score || 0) +
+                                (analysisResult.dialog_analysis.metrics.charm_and_tone?.score || 0) +
+                                (analysisResult.dialog_analysis.metrics.creativity?.score || 0) +
+                                (analysisResult.dialog_analysis.metrics.adaptability?.score || 0) +
+                                (analysisResult.dialog_analysis.metrics.self_promotion?.score || 0)
+                              ) / 5).toFixed(1)
+                            ) : '3.0'} / 5
                           </span>
                         </div>
                   </div>
