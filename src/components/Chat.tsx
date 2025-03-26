@@ -259,7 +259,7 @@ function Chat() {
   
   const [message, setMessage] = useState('');
   const [selectedUser, setSelectedUser] = useState('Marcus');
-  const [timeRemaining, setTimeRemaining] = useState(1200); // Изменено с 300 секунд (5 минут) на 1200 секунд (20 минут)
+  const [timeRemaining, setTimeRemaining] = useState(300); // Изменено с 1200 секунд (20 минут) на 300 секунд (5 минут)
   const [showCongratulations, setShowCongratulations] = useState(false);
   const [calculatingResults, setCalculatingResults] = useState(false);
   const [isSessionComplete, setIsSessionComplete] = useState(false);
@@ -943,14 +943,18 @@ function Chat() {
 
         // Формируем содержимое сообщения с фото
         const photoMessageContent = `[Photo ${tempSelectedImage.match(/\/(\d+)\.jpg$/)?.[1] || ''}] [${preloadedImages.find(img => img.url === tempSelectedImage)?.prompt || 'User sent an image'}]${priceInfo}${commentInfo} [model sent photo]`;
-
+        
+        console.log('Отправляем фото-сообщение:', photoMessageContent.substring(0, 50) + '...');
+        
         // Проверяем, есть ли уже начатый разговор с этим пользователем в Grok
         const existingConversation = userConversations[selectedUser];
+        console.log('Существующие детали разговора для фото:', existingConversation);
 
+        // ВАЖНО: Отправляем ТОЛЬКО текущее сообщение пользователя с фото, без истории диалога
         // Сохраняем сообщение пользователя в чат через API
-        await chatService.sendMessage(
+        const chatResponse = await chatService.sendMessage(
           currentTestSessionId,
-          photoMessageContent,
+          photoMessageContent, // Отправляем только текущее сообщение с фото
           '', // employeeId пустой, так как мы используем sessionId
           chatNumber,
           existingConversation && existingConversation.conversationId && existingConversation.parentResponseId
@@ -961,107 +965,43 @@ function Chat() {
             : undefined
         );
         
-        // Создаем массив сообщений для отправки в Grok API
-        let messagesToSend: { role: 'user' | 'assistant' | 'system', content: string }[] = [];
-        
-        // Если есть существующий разговор, отправляем только текущее сообщение
-        if (existingConversation && existingConversation.conversationId && existingConversation.parentResponseId) {
-          // Для продолжающегося чата отправляем только текущее сообщение
-          messagesToSend = [{
-            role: 'user',
-            content: photoMessageContent
-          }];
-          console.log('Continuing existing conversation - sending only current message');
-        } else {
-          // Для нового чата отправляем системный промпт и текущее сообщение
-          messagesToSend = [
-            {
-              role: 'system',
-              content: userPrompts[selectedUser]
-            },
-            {
-              role: 'user',
-              content: photoMessageContent
-            }
-          ];
-          console.log('Starting new conversation with system prompt and message');
+        if (chatResponse.error) {
+          throw new Error(chatResponse.error);
         }
         
-        // Вызываем Grok API
-        const grokResponse = await grokService.generateResponse(
-          messagesToSend,
-          existingConversation && existingConversation.conversationId && existingConversation.parentResponseId
-            ? {
-                conversationId: existingConversation.conversationId,
-                parentResponseId: existingConversation.parentResponseId
-              }
-            : undefined
-        );
+        console.log('Ответ API на фото-сообщение:', chatResponse);
+        
+        const { botResponse } = chatResponse;
+        
+        if (botResponse && botResponse.error) {
+          throw new Error(botResponse.error);
+        }
 
         // Сохраняем информацию о разговоре для будущих сообщений
-        console.log('Updating conversation details after photo message:', {
-          conversationId: grokResponse.conversation_id,
-          parentResponseId: grokResponse.parent_response_id
-        });
+        if (botResponse && botResponse.conversation_id && botResponse.parent_response_id) {
+          console.log('Обновляем детали разговора после отправки фото:', {
+            conversationId: botResponse.conversation_id,
+            parentResponseId: botResponse.parent_response_id
+          });
 
-        setUserConversations(prev => ({
-          ...prev,
-          [selectedUser]: {
-            conversationId: grokResponse.conversation_id,
-            parentResponseId: grokResponse.parent_response_id,
-            chatLink: grokResponse.chat_link
-          }
-        }));
-
-        if (grokResponse.error) {
-          const errorMessage = {
-            id: `error-${Date.now()}`,
-            sender: selectedUser,
-            content: `Error: ${grokResponse.error}`,
-            time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true }),
-            isOwn: false,
-            isRead: false,
-            error: true,
-            errorDetails: grokResponse.error
-          };
-
-          setChatHistories(prev => ({
+          setUserConversations(prev => ({
             ...prev,
-            [selectedUser]: [...prev[selectedUser], errorMessage]
+            [selectedUser]: {
+              conversationId: botResponse.conversation_id,
+              parentResponseId: botResponse.parent_response_id,
+              chatLink: botResponse.chat_link
+            }
           }));
-        } else {
+        }
+
+        if (botResponse && botResponse.response) {
           // Имитируем печатание ответа перед его отображением
           await simulateTypingDelay(selectedUser);
           
-          // Проверяем, содержит ли ответ теги [Bought]/[Not Bought]
-          const botResponse = grokResponse.response;
-          const boughtTag = botResponse.includes('[Bought]');
-          const notBoughtTag = botResponse.includes('[Not Bought]');
-          
-          // Очищаем ответ от тегов
-          let cleanResponse = botResponse
-            .replace(/\[\s*Bought\s*\]/gi, '')
-            .replace(/\[\s*Not\s*Bought\s*\]/gi, '')
-            .replace(/\[[^\]]*\]/g, '')
-            .replace(/\s+/g, ' ')
-            .trim();
-          
-          // Сохраняем ответ ассистента в чат через API
-          await chatService.sendMessage(
-            currentTestSessionId,
-            cleanResponse,
-            '', // employeeId пустой, так как мы используем sessionId
-            chatNumber,
-            {
-              conversationId: grokResponse.conversation_id,
-              parentResponseId: grokResponse.parent_response_id
-            }
-          );
-
           const assistantMessage = {
             id: `assistant-${Date.now()}`,
             sender: selectedUser,
-            content: cleanResponse,
+            content: botResponse.response,
             time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true }),
             isOwn: false,
             isRead: false
@@ -1072,17 +1012,16 @@ function Chat() {
             [selectedUser]: [...prev[selectedUser], assistantMessage]
           }));
           
-          // Обрабатываем теги [Bought]/[Not Bought]
-          if (boughtTag) {
-            // Обновляем статус фото на "bought"
-            const photoMsg = newMessage;
+          // Обрабатываем теги [Bought] если они есть в ответе
+          if (botResponse.boughtTag) {
+            // Обновляем статус отправленного фото на "bought"
             setChatHistories(prev => {
               const newHistory = [...prev[selectedUser]];
-              const photoIndex = newHistory.findIndex(msg => msg.id === photoMsg.id);
+              const photoIndex = newHistory.findIndex(msg => msg.id === newMessage.id);
               
-              if (photoIndex !== -1 && photoMsg.price && photoMsg.price !== 'FREE') {
+              if (photoIndex !== -1 && newMessage.price && newMessage.price !== 'FREE') {
                 newHistory[photoIndex] = {
-                  ...photoMsg,
+                  ...newMessage,
                   bought: true,
                   pending: true,
                   purchased: true
@@ -1117,22 +1056,8 @@ function Chat() {
           // Игнорируем ошибку, так как это не критичная функциональность
         }
       } catch (error) {
-          console.error('Error in sending photo message:', error);
-        
-        const errorMessage = {
-          id: `error-${Date.now()}`,
-          sender: selectedUser,
-            content: 'Error sending photo. Please try again.',
-          time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true }),
-          isOwn: false,
-          isRead: false,
-          error: true
-        };
-
-        setChatHistories(prev => ({
-          ...prev,
-          [selectedUser]: [...prev[selectedUser], errorMessage]
-        }));
+        console.error('Error in sending photo message:', error);
+        // ... existing code ...
       } finally {
         setLoadingStates(prev => ({ ...prev, [selectedUser]: false }));
       }
@@ -1371,13 +1296,18 @@ function Chat() {
       return;
     }
 
+    // Создаем сообщение пользователя
+    const userMessageContent = message.trim();
+    console.log('Отправляем сообщение пользователя:', userMessageContent);
+
     const newMessage = {
       id: `user-${Date.now()}`,
       sender: 'You',
-      content: message,
+      content: userMessageContent,
       time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true }),
       isOwn: true,
-      isRead: true
+      isRead: true,
+      isOriginal: true
     };
 
     setChatHistories(prev => ({
@@ -1398,12 +1328,13 @@ function Chat() {
       // Проверяем, есть ли уже начатый разговор с этим пользователем в Grok
       const existingConversation = userConversations[selectedUser];
       
-      console.log('Existing conversation details:', existingConversation);
+      console.log('Существующие детали разговора:', existingConversation);
 
+      // ВАЖНО: Отправляем ТОЛЬКО текущее сообщение пользователя, не всю историю
       // Отправляем сообщение через API маршрут /api/chat с данными о существующем чате
       const chatResponse = await chatService.sendMessage(
         currentTestSessionId,
-        message,
+        userMessageContent, // Отправляем только текущее сообщение пользователя
         '', // employeeId пустой, так как мы используем sessionId
         chatNumber,
         existingConversation && existingConversation.conversationId && existingConversation.parentResponseId
@@ -1419,7 +1350,7 @@ function Chat() {
         throw new Error(chatResponse.error);
       }
 
-      console.log('API response:', chatResponse);
+      console.log('Ответ API:', chatResponse);
       
       // Проверяем, содержит ли ответ теги [Bought]/[Not Bought]
       const { botResponse } = chatResponse;
@@ -1485,7 +1416,7 @@ function Chat() {
         
         // Сохраняем информацию о разговоре для будущих сообщений
         if (botResponse.conversation_id && botResponse.parent_response_id) {
-          console.log('Updating conversation details for future messages:', {
+          console.log('Обновляем детали разговора для будущих сообщений:', {
             conversationId: botResponse.conversation_id,
             parentResponseId: botResponse.parent_response_id
           });

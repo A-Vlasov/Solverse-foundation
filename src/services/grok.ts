@@ -13,6 +13,35 @@ interface GrokResponse {
 // Use environment variables for API URLs
 const API_BASE_URL = 'http://145.223.85.248:3001/api';
 
+// Функция для проверки доступности API
+const checkApiAvailability = async (): Promise<boolean> => {
+  try {
+    console.log('Проверка доступности API сервера Grok...');
+    
+    // Устанавливаем тайм-аут для проверки доступности
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 секунд тайм-аут
+    
+    const response = await fetch(`${API_BASE_URL}/health`, {
+      method: 'GET',
+      signal: controller.signal
+    }).catch(() => null);
+    
+    clearTimeout(timeoutId);
+    
+    if (response && response.ok) {
+      console.log('API сервер Grok доступен');
+      return true;
+    }
+    
+    console.warn('API сервер Grok недоступен');
+    return false;
+  } catch (error) {
+    console.warn('Ошибка при проверке доступности API:', error);
+    return false;
+  }
+};
+
 /**
  * Sends a message to Grok API to start a new conversation
  */
@@ -20,13 +49,26 @@ export const startNewGrokConversation = async (message: string): Promise<GrokRes
   try {
     console.log('Starting new Grok conversation with message:', message);
     
-    const response = await fetch(`${API_BASE_URL}/chat/new`, {
+    // Проверяем доступность API перед отправкой запроса
+    const isApiAvailable = await checkApiAvailability();
+    if (!isApiAvailable) {
+      console.error('Grok API не доступен. Возвращаем заглушку ответа.');
+      return {
+        conversation_id: 'local-' + Date.now(),
+        parent_response_id: 'local-' + Date.now(),
+        response: 'Извините, сервис временно недоступен. Пожалуйста, повторите попытку позже.',
+        error: 'API server is not available'
+      };
+    }
+    
+    // Используем функцию повторных попыток вместо простого fetch
+    const response = await retryFetch(`${API_BASE_URL}/chat/new`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({ message })
-    });
+    }, 3, 1000); // 3 попытки с начальной задержкой 1 секунда
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -40,10 +82,11 @@ export const startNewGrokConversation = async (message: string): Promise<GrokRes
   } catch (error) {
     console.error('Error starting new Grok conversation:', error);
     
+    // Возвращаем локальный ответ в случае ошибки
     return {
-      conversation_id: '',
-      parent_response_id: '',
-      response: '',
+      conversation_id: 'local-' + Date.now(),
+      parent_response_id: 'local-' + Date.now(),
+      response: 'Извините, произошла ошибка при обработке запроса. Пожалуйста, повторите попытку позже.',
       error: error instanceof Error ? error.message : 'Unknown error occurred'
     };
   }
@@ -64,7 +107,20 @@ export const continueGrokConversation = async (
       parent_response_id
     });
     
-    const response = await fetch(`${API_BASE_URL}/chat`, {
+    // Проверяем доступность API перед отправкой запроса
+    const isApiAvailable = await checkApiAvailability();
+    if (!isApiAvailable) {
+      console.error('Grok API не доступен. Возвращаем заглушку ответа.');
+      return {
+        conversation_id: conversation_id || ('local-' + Date.now()),
+        parent_response_id: parent_response_id || ('local-' + Date.now()),
+        response: 'Извините, сервис временно недоступен. Пожалуйста, повторите попытку позже.',
+        error: 'API server is not available'
+      };
+    }
+    
+    // Используем функцию повторных попыток вместо простого fetch
+    const response = await retryFetch(`${API_BASE_URL}/chat`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -74,7 +130,7 @@ export const continueGrokConversation = async (
         conversation_id,
         parent_response_id
       })
-    });
+    }, 3, 1000); // 3 попытки с начальной задержкой 1 секунда
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -95,10 +151,11 @@ export const continueGrokConversation = async (
   } catch (error) {
     console.error('Error continuing Grok conversation:', error);
     
+    // Возвращаем локальный ответ в случае ошибки
     return {
-      conversation_id,
-      parent_response_id,
-      response: '',
+      conversation_id: conversation_id || ('local-' + Date.now()),
+      parent_response_id: parent_response_id || ('local-' + Date.now()),
+      response: 'Извините, произошла ошибка при обработке запроса. Пожалуйста, повторите попытку позже.',
       error: error instanceof Error ? error.message : 'Unknown error occurred'
     };
   }
@@ -111,8 +168,16 @@ export const generateGrokResponse = async (
   messages: { role: 'user' | 'assistant' | 'system', content: string }[],
   conversationDetails?: { conversationId: string; parentResponseId: string }
 ): Promise<GrokResponse> => {
-  // Отфильтровываем пустые сообщения
-  const filteredMessages = messages.filter(msg => msg.content && msg.content.trim());
+  // Отфильтровываем пустые сообщения и строго проверяем их валидность
+  const filteredMessages = messages.filter(msg => {
+    // Проверка наличия контента и его непустоты
+    if (!msg.content || !msg.content.trim()) {
+      console.log('Отфильтровано пустое сообщение с ролью:', msg.role);
+      return false;
+    }
+    
+    return true;
+  });
   
   // Проверяем, продолжаем ли мы существующий разговор
   const isExistingConversation = !!(
@@ -121,13 +186,50 @@ export const generateGrokResponse = async (
     conversationDetails.parentResponseId
   );
   
-  console.log(`Generating Grok response for ${isExistingConversation ? 'existing' : 'new'} conversation`);
+  console.log(`----- Grok API: ${isExistingConversation ? 'Продолжаем существующий' : 'Начинаем новый'} разговор -----`);
+  console.log('Количество сообщений:', filteredMessages.length);
+  console.log('Роли сообщений:', filteredMessages.map(m => m.role).join(', '));
   
-  // Находим последнее сообщение пользователя
-  const lastUserMessage = [...filteredMessages].reverse().find(msg => msg.role === 'user');
+  // Для существующих бесед используем корректную передачу идентификаторов
+  if (isExistingConversation) {
+    // Находим последнее сообщение пользователя
+    const lastUserMessage = [...filteredMessages].reverse().find(msg => msg.role === 'user');
+    
+    if (!lastUserMessage) {
+      console.error('Не найдено сообщение пользователя для продолжения разговора');
+      return {
+        conversation_id: '',
+        parent_response_id: '',
+        response: '',
+        error: 'No user message found'
+      };
+    }
+    
+    // Убедимся, что отправляем оригинальное сообщение, без изменений
+    const messageToSend = lastUserMessage.content;
+    console.log('Продолжаем разговор только с последним сообщением пользователя:');
+    console.log(messageToSend.substring(0, 50) + (messageToSend.length > 50 ? '...' : ''));
+    
+    // Преобразуем идентификаторы из camelCase в snake_case для корректной работы API
+    const conversation_id = conversationDetails.conversationId;
+    const parent_response_id = conversationDetails.parentResponseId;
+    console.log('Используем идентификаторы:', { conversation_id, parent_response_id });
+    
+    // Вызываем функцию продолжения разговора с переданными идентификаторами
+    return continueGrokConversation(
+      messageToSend,
+      conversation_id,
+      parent_response_id
+    );
+  }
+  
+  // Для нового разговора
+  // Находим системное сообщение и последнее сообщение пользователя
   const systemMessage = filteredMessages.find(msg => msg.role === 'system');
+  const userMessage = [...filteredMessages].reverse().find(msg => msg.role === 'user');
   
-  if (!lastUserMessage) {
+  if (!userMessage) {
+    console.error('Не найдено сообщение пользователя для нового разговора');
     return {
       conversation_id: '',
       parent_response_id: '',
@@ -135,29 +237,26 @@ export const generateGrokResponse = async (
       error: 'No user message found'
     };
   }
-
-  // Берем содержимое последнего сообщения пользователя
-  let messageToSend = lastUserMessage.content;
   
-  // Для продолжения существующего разговора отправляем только текущее сообщение пользователя
-  if (isExistingConversation) {
-    console.log('Continuing conversation with message:', messageToSend.substring(0, 50) + (messageToSend.length > 50 ? '...' : ''));
-    return continueGrokConversation(
-      messageToSend,
-      conversationDetails.conversationId,
-      conversationDetails.parentResponseId
-    );
-  }
+  // Формируем сообщение для нового разговора
+  let messageToSend = userMessage.content;
   
-  // Для нового разговора добавляем системный промпт, если он есть
+  // Добавляем системный промпт, если он есть
   if (systemMessage) {
-    console.log('Adding system prompt to message for new conversation');
+    console.log('Добавляем системный промпт к новому разговору');
     messageToSend = `${systemMessage.content}\n\nGirls message: ${messageToSend}`;
   }
   
-  // Запускаем новый разговор с сформированным сообщением
-  console.log('Starting new conversation with message:', messageToSend.substring(0, 50) + (messageToSend.length > 50 ? '...' : ''));
-  return startNewGrokConversation(messageToSend);
+  // Выводим информационное сообщение о начале разговора
+  console.log('Начинаем новый разговор, сообщение:');
+  console.log('Системный промпт:', systemMessage ? systemMessage.content.substring(0, 50) + '...' : 'Отсутствует');
+  console.log('Сообщение пользователя:', userMessage.content.substring(0, 50) + '...');
+  
+  // Запускаем новый разговор с системным промптом и сообщением пользователя
+  const response = await startNewGrokConversation(messageToSend);
+  console.log('----- Grok API: Получен ответ -----');
+  
+  return response;
 };
 
 // Функция для повторения запросов с задержкой
