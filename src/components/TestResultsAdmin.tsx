@@ -272,7 +272,9 @@ function TestResultsAdmin() {
     pricingEvaluation: {
       score: 0,
       strengths: [],
-      weaknesses: []
+      weaknesses: [],
+      level: 'Не определен',
+      details: 'Информация отсутствует'
     },
     salesPerformance: {
       introduction: {
@@ -405,15 +407,22 @@ function TestResultsAdmin() {
     
     try {
       setLoadingSessions(true);
-      // TODO: Заменить на реальный API-запрос, когда он будет доступен
-      const sessions = await fetch('/api/test-sessions')
-        .then(res => res.ok ? res.json() : [])
-        .catch(() => []);
+      
+      // Используем созданный API-маршрут для загрузки сессий
+      console.log('[TestResultsAdmin] Загрузка списка сессий через API');
+      const response = await fetch('/api/test-sessions');
+      
+      if (!response.ok) {
+        throw new Error(`Ошибка при загрузке списка сессий: ${response.statusText}`);
+      }
+      
+      const sessions = await response.json();
       
       if (Array.isArray(sessions) && sessions.length > 0) {
+        console.log('[TestResultsAdmin] Загружены сессии:', sessions.length);
         setAllSessions(sessions);
       } else {
-        console.warn('Failed to load sessions from API, using mock data');
+        console.warn('[TestResultsAdmin] Сессии не найдены, используем тестовые данные');
         // Создаем тестовый набор сессий для отображения
         const mockSessions = [
           { 
@@ -450,7 +459,7 @@ function TestResultsAdmin() {
         setAllSessions(mockSessions as TestSession[]);
       }
     } catch (error) {
-      console.error('Error loading sessions:', error);
+      console.error('[TestResultsAdmin] Ошибка при загрузке списка сессий:', error);
     } finally {
       setLoadingSessions(false);
     }
@@ -477,7 +486,9 @@ function TestResultsAdmin() {
         pricingEvaluation: {
           score: 0,
           strengths: [],
-          weaknesses: []
+          weaknesses: [],
+          level: 'Не определен',
+          details: 'Информация отсутствует'
         },
         salesPerformance: {
           introduction: { score: 0, conversionRate: 0, strengths: [], weaknesses: [] },
@@ -534,37 +545,56 @@ function TestResultsAdmin() {
         }
       ];
       
-      // Формируем рекомендации из общего заключения
+      // Формируем рекомендации из общего заключения и result_summary
+      const recommendationsArray = [];
+
+      // Добавляем overall_conclusion, если он есть
+      if (analysisData.overall_conclusion) {
+        recommendationsArray.push(analysisData.overall_conclusion);
+      }
+
+      // Обрабатываем result_summary
       const recommendationsText = analysisData.result_summary || '';
-      const recommendations = recommendationsText
-        .split('.')
-        .map((r: string) => r.trim())
-        .filter((r: string) => r.length > 10 && !r.includes('Рекомендации:'));
+      if (recommendationsText) {
+        const splitRecommendations = recommendationsText
+          .split('.')
+          .map((r: string) => r.trim())
+          .filter((r: string) => r.length > 10 && !r.includes('Рекомендации:'));
+        
+        // Добавляем найденные рекомендации в общий массив
+        recommendationsArray.push(...splitRecommendations);
+      }
       
-      // Ценовая политика
+      // Ценовая политика с дополнительными полями
+      const pricingScore = metrics.pricing_policy?.score || 0;
       const pricingEvaluation = {
-        score: metrics.pricing_policy?.score || 0,
+        score: pricingScore,
         strengths: metrics.pricing_policy?.strengths || [],
-        weaknesses: metrics.pricing_policy?.improvements || []
+        weaknesses: metrics.pricing_policy?.improvements || [],
+        // Добавляем уровень и детали
+        level: pricingScore >= 4 ? 'Высокая' : 
+               pricingScore >= 3 ? 'Средняя' : 
+               pricingScore > 0 ? 'Низкая' : 'Не определен',
+        details: metrics.pricing_policy?.verdict || 'Информация отсутствует'
       };
       
-      // Стадии продаж
+      // Стадии продаж с вычислением конверсии
       const salesPerformance = {
         introduction: {
           score: metrics.sales_stages?.introduction?.score || 0,
-          conversionRate: 0, // Используем фиксированное значение, так как нет данных
+          conversionRate: Math.round((metrics.sales_stages?.introduction?.score || 0) * 20), // Преобразуем оценку 0-5 в процент 0-100
           strengths: metrics.sales_stages?.introduction?.strengths || [],
           weaknesses: metrics.sales_stages?.introduction?.weaknesses || []
         },
         warmup: {
           score: metrics.sales_stages?.warmup?.score || 0,
-          conversionRate: 0,
+          conversionRate: Math.round((metrics.sales_stages?.warmup?.score || 0) * 20),
           strengths: metrics.sales_stages?.warmup?.strengths || [],
           weaknesses: metrics.sales_stages?.warmup?.weaknesses || []
         },
         sales: {
           score: metrics.sales_stages?.closing?.score || 0,
-          conversionRate: 0,
+          conversionRate: Math.round((metrics.sales_stages?.closing?.score || 0) * 20),
           strengths: metrics.sales_stages?.closing?.strengths || [],
           weaknesses: metrics.sales_stages?.closing?.weaknesses || []
         }
@@ -579,7 +609,7 @@ function TestResultsAdmin() {
         date: testDate,
         duration: testDuration,
         parameters,
-        recommendations,
+        recommendations: recommendationsArray,
         pricingEvaluation,
         salesPerformance,
         dialogues: dialogues || []
@@ -596,7 +626,9 @@ function TestResultsAdmin() {
         pricingEvaluation: {
           score: 0,
           strengths: [],
-          weaknesses: []
+          weaknesses: [],
+          level: 'Не определен',
+          details: 'Ошибка при обработке данных'
         },
         salesPerformance: {
           introduction: { score: 0, conversionRate: 0, strengths: [], weaknesses: [] },
@@ -641,9 +673,10 @@ function TestResultsAdmin() {
     }
     
     try {
-      // Загружаем информацию о сессии
-      console.log('[TestResultsAdmin] Загрузка сессии...');
+      // Загружаем информацию о сессии через API
+      console.log('[TestResultsAdmin] Загрузка сессии через API...');
       const sessionResponse = await fetch(`/api/test-sessions/${sessionId}`);
+      
       if (!sessionResponse.ok) {
         throw new Error(`Ошибка загрузки сессии: ${sessionResponse.statusText}`);
       }
@@ -657,9 +690,13 @@ function TestResultsAdmin() {
         return;
       }
       
-      // Загружаем историю диалогов
-      console.log('[TestResultsAdmin] Загрузка истории чатов...');
+      // Загружаем историю диалогов через API
+      console.log('[TestResultsAdmin] Загрузка истории чатов через API...');
       const chatHistoryResponse = await fetch(`/api/chat-history/${sessionId}`);
+      
+      if (!chatHistoryResponse.ok) {
+        throw new Error(`Ошибка загрузки истории чатов: ${chatHistoryResponse.statusText}`);
+      }
       
       const chatHistory = await chatHistoryResponse.json();
       console.log('[TestResultsAdmin] История чатов:', chatHistory);
@@ -668,8 +705,8 @@ function TestResultsAdmin() {
       const formattedDialogues = formatDialogues(chatHistory || []);
       console.log('[TestResultsAdmin] Отформатированные диалоги:', formattedDialogues);
       
-      // Загружаем результаты тестирования
-      console.log('[TestResultsAdmin] Загрузка результатов тестирования...');
+      // Загружаем результаты тестирования через API
+      console.log('[TestResultsAdmin] Загрузка результатов тестирования через API...');
       const testResultResponse = await fetch(`/api/test-results/${sessionId}`);
       
       // Даже если результатов нет, мы не выдаем ошибку, а просто показываем диалоги
@@ -1250,7 +1287,7 @@ function TestResultsAdmin() {
                     initial="hidden"
                     animate="visible"
                   >
-                    <h3 className="text-xl font-semibold mb-6">Рекомендации</h3>
+                    <h3 className="text-xl font-semibold mb-6">Рекомендации и заключение</h3>
                     
                     <div className="space-y-4">
                       {testResults.recommendations.map((rec, index) => (
