@@ -166,17 +166,33 @@ function TestResultsAdmin() {
     return id.length >= 32 && id.includes('-'); // Упрощенная проверка
   };
   
-  // Определяем sessionId с менее строгой проверкой
+  // Пробуем получить sessionId из различных источников
+  // 1. Из URL-параметров
   const pathSegments = location.pathname.split('/');
   const lastSegment = pathSegments[pathSegments.length - 1];
   
+  // 2. Из data-атрибута контейнера
+  const container = document.getElementById('test-results-container');
+  const containerSessionId = container?.getAttribute('data-session-id');
+  
+  // 3. Из state (при навигации с помощью navigate)
+  const stateSessionId = location.state?.sessionId;
+  
   // Определяем, находимся ли на странице /admin без указания ID
   const isAdminPage = location.pathname === '/admin' || location.pathname === '/admin/';
-  const sessionId = isAdminPage ? null : (paramSessionId || lastSegment);
   
+  // Приоритет: 1. параметр sessionId из props, 2. из контейнера, 3. из state, 4. из URL
+  const sessionId = isAdminPage ? null : (paramSessionId || containerSessionId || stateSessionId || lastSegment);
+  
+  console.log('--------- TestResultsAdmin: Получение sessionId ---------');
   console.log('URL path:', location.pathname);
+  console.log('Last URL segment:', lastSegment);
+  console.log('Container sessionId:', containerSessionId);
+  console.log('State sessionId:', stateSessionId);
+  console.log('Props sessionId:', paramSessionId);
   console.log('isAdminPage:', isAdminPage);
-  console.log('Extracted sessionId from URL:', sessionId);
+  console.log('Final sessionId:', sessionId);
+  console.log('---------------------------------------------');
 
   const [selectedDialogue, setSelectedDialogue] = useState<string | null>(null);
   const [chats, setChats] = useState<Chat[]>([]);
