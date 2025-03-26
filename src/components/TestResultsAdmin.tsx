@@ -48,7 +48,6 @@ interface Dialogue {
   id: string;
   title: string;
   date: string;
-  duration: string;
   score: number;
   messages: DialogueMessage[];
 }
@@ -143,7 +142,7 @@ const cleanContent = (text: string): string => {
     .trim();
 };
 
-// Добавляем функцию определения статуса покупки фотографии прямо перед возвратом компонента
+// Добавляем функцию для определения статуса покупки фотографии
 const checkPhotoPurchaseStatus = (dialogueMessages: DialogueMessage[], photoMsgIndex: number): boolean => {
   // Проверяем все сообщения после фотографии
   for (let i = photoMsgIndex + 1; i < dialogueMessages.length; i++) {
@@ -207,6 +206,11 @@ function TestResultsAdmin() {
     }
   }
 
+  // Переопределяем console.log для оптимизации в зависимости от режима
+  const isDevMode = process.env.NODE_ENV === 'development';
+  const logInfo = isDevMode ? console.log : () => {};
+  const logDebug = isDevMode ? console.debug : () => {};
+
   // Улучшенная логика определения sessionId
   // Приоритет: 1. из URL-пути, 2. параметр из URL, 3. из state, 4. из контейнера, 5. из последнего сегмента URL
   let finalSessionId = null;
@@ -216,25 +220,24 @@ function TestResultsAdmin() {
   if (sessionIdFromPath) {
     finalSessionId = sessionIdFromPath;
     sessionIdSource = 'URL путь /admin/session/:sessionId';
-    console.log('[TestResultsAdmin] Получен sessionId из URL пути /admin/session/:sessionId:', sessionIdFromPath);
+    logDebug('[TestResultsAdmin] Получен sessionId из URL пути /admin/session/:sessionId:', sessionIdFromPath);
   } else if (paramSessionId && isValidUUID(paramSessionId)) {
     finalSessionId = paramSessionId;
     sessionIdSource = 'URL параметр';
-    console.log('[TestResultsAdmin] Получен sessionId из URL параметра:', paramSessionId);
+    logDebug('[TestResultsAdmin] Получен sessionId из URL параметра:', paramSessionId);
   } else if (location.state?.sessionId && isValidUUID(location.state?.sessionId)) {
     finalSessionId = location.state.sessionId;
     sessionIdSource = 'state при навигации';
     fromDashboard = location.state?.fromDashboard || false;
-    console.log('[TestResultsAdmin] Получен sessionId из state:', location.state.sessionId, 
-      'fromDashboard:', fromDashboard);
+    logDebug('[TestResultsAdmin] Получен sessionId из state:', location.state.sessionId, 'fromDashboard:', fromDashboard);
   } else if (containerSessionId && isValidUUID(containerSessionId)) {
     finalSessionId = containerSessionId;
     sessionIdSource = 'data-атрибут контейнера';
-    console.log('[TestResultsAdmin] Получен sessionId из контейнера:', containerSessionId);
+    logDebug('[TestResultsAdmin] Получен sessionId из контейнера:', containerSessionId);
   } else if (!isAdminPage && lastSegment && lastSegment !== 'admin' && isValidUUID(lastSegment)) {
     finalSessionId = lastSegment;
     sessionIdSource = 'последний сегмент URL';
-    console.log('[TestResultsAdmin] Получен sessionId из последнего сегмента URL:', lastSegment);
+    logDebug('[TestResultsAdmin] Получен sessionId из последнего сегмента URL:', lastSegment);
   } else {
     console.warn('[TestResultsAdmin] Не удалось определить валидный sessionId ни из одного источника. URL:', location.pathname);
   }
@@ -243,23 +246,31 @@ function TestResultsAdmin() {
   // На админ-странице sessionId всегда null
   const sessionId = isSessionPage ? finalSessionId : 
                    (isAdminPage ? null : finalSessionId);
+                   
+  // Отладочный параметр для принудительной загрузки тестовых данных
+  const force_load = location.search.includes('force_load=true');
+  if (force_load) {
+    console.log('[TestResultsAdmin] Принудительная загрузка тестовых данных включена');
+  }
 
-  console.log('---------[DEBUG] TestResultsAdmin: Получение sessionId ---------');
-  console.log('URL path:', location.pathname);
-  console.log('URL path parts:', location.pathname.split('/'));
-  console.log('Last URL segment:', lastSegment);
-  console.log('sessionIdFromPath:', sessionIdFromPath);
-  console.log('Container sessionId:', containerSessionId);
-  console.log('State sessionId:', location.state?.sessionId);
-  console.log('Props sessionId:', paramSessionId);
-  console.log('isAdminPage:', isAdminPage);
-  console.log('isSessionPage:', isSessionPage);
-  console.log('Источник sessionId:', sessionIdSource);
-  console.log('Final sessionId:', finalSessionId);
-  console.log('Used sessionId:', sessionId);
-  console.log('fromDashboard:', fromDashboard);
-  console.log('State при навигации:', JSON.stringify(location.state));
-  console.log('---------------------------------------------');
+  // В режиме разработки выводим подробную отладочную информацию
+  if (isDevMode) {
+    console.groupCollapsed('[DEBUG] TestResultsAdmin: Получение sessionId');
+    console.log('URL path:', location.pathname);
+    console.log('URL path parts:', location.pathname.split('/'));
+    console.log('Last URL segment:', lastSegment);
+    console.log('sessionIdFromPath:', sessionIdFromPath);
+    console.log('Container sessionId:', containerSessionId);
+    console.log('State sessionId:', location.state?.sessionId);
+    console.log('Props sessionId:', paramSessionId);
+    console.log('isAdminPage:', isAdminPage);
+    console.log('isSessionPage:', isSessionPage);
+    console.log('Источник sessionId:', sessionIdSource);
+    console.log('Final sessionId:', finalSessionId);
+    console.log('Used sessionId:', sessionId);
+    console.log('fromDashboard:', fromDashboard);
+    console.groupEnd();
+  }
   
   // Mock data с той же структурой
   const [testResults, setTestResults] = useState<TestResultState>({
@@ -409,7 +420,7 @@ function TestResultsAdmin() {
       setLoadingSessions(true);
       
       // Используем созданный API-маршрут для загрузки сессий
-      console.log('[TestResultsAdmin] Загрузка списка сессий через API');
+      logInfo('[TestResultsAdmin] Загрузка списка сессий через API');
       const response = await fetch('/api/test-sessions');
       
       if (!response.ok) {
@@ -419,7 +430,7 @@ function TestResultsAdmin() {
       const sessions = await response.json();
       
       if (Array.isArray(sessions) && sessions.length > 0) {
-        console.log('[TestResultsAdmin] Загружены сессии:', sessions.length);
+        logInfo('[TestResultsAdmin] Загружены сессии:', sessions.length);
         setAllSessions(sessions);
       } else {
         console.warn('[TestResultsAdmin] Сессии не найдены, используем тестовые данные');
@@ -465,19 +476,46 @@ function TestResultsAdmin() {
     }
   };
 
+  // Добавляем улучшенную функцию для обработки имени кандидата
+  const formatCandidateName = (name: string | null | undefined): string => {
+    if (!name || name.trim() === '') return 'Неизвестный кандидат';
+    if (name.toLowerCase().includes('неизвестный')) return 'Неизвестный кандидат';
+    return name.trim();
+  };
+
   // Загрузка данных при изменении sessionId
   useEffect(() => {
     loadData();
   }, [sessionId]);
 
+  // Специальный эффект для бесшовной загрузки при переходе с дашборда
+  useEffect(() => {
+    // Если мы пришли с дашборда и есть сессия, запускаем предварительную загрузку
+    if (fromDashboard && finalSessionId) {
+      // Настраиваем начальное состояние анимации
+      setDataLoaded(false);
+      
+      // Инициируем загрузку данных с небольшим таймаутом 
+      // для того чтобы react успел отрисовать предварительную анимацию
+      const timer = setTimeout(() => {
+        loadData();
+      }, 50); // Минимальная задержка для отрисовки UI
+      
+      return () => clearTimeout(timer);
+    }
+  }, []);
+
   // Функция для преобразования результатов анализа в формат для отображения
   const processTestResults = (testResult: any, candidateName: string, testDate: string, testDuration: string, dialogues: Dialogue[]): TestResultState => {
     console.log('[TestResultsAdmin] Обработка результатов анализа...');
     
+    // Проверяем и форматируем имя кандидата
+    const formattedCandidateName = formatCandidateName(candidateName);
+      
     if (!testResult || !testResult.analysis_result || !testResult.analysis_result.analysisResult) {
       console.warn('[TestResultsAdmin] Результаты анализа отсутствуют или имеют неверный формат');
       return {
-        candidateName,
+        candidateName: formattedCandidateName,
         overallScore: 0,
         date: testDate,
         duration: testDuration,
@@ -604,7 +642,7 @@ function TestResultsAdmin() {
       
       // Возвращаем обработанные данные
       return {
-        candidateName,
+        candidateName: formattedCandidateName,
         overallScore,
         date: testDate,
         duration: testDuration,
@@ -617,7 +655,7 @@ function TestResultsAdmin() {
     } catch (error) {
       console.error('[TestResultsAdmin] Ошибка при обработке результатов анализа:', error);
       return {
-        candidateName,
+        candidateName: formattedCandidateName,
         overallScore: 0,
         date: testDate,
         duration: testDuration,
@@ -645,87 +683,98 @@ function TestResultsAdmin() {
     setLoading(true);
     setError(null);
     
-    console.log('[TestResultsAdmin] Начинаем загрузку данных...');
+    logInfo('[TestResultsAdmin] Начинаем загрузку данных...');
     
     if (!sessionId && isAdminPage) {
-      console.log('[TestResultsAdmin] Это страница админ-панели, загружаем список сессий');
+      logInfo('[TestResultsAdmin] Это страница админ-панели, загружаем список сессий');
       await loadAllSessions();
       setLoading(false);
       return;
     }
     
-    if (!sessionId) {
+    if (!sessionId && !force_load) {
       console.error('[TestResultsAdmin] Отсутствует ID сессии для загрузки данных');
       setError('Не указан ID сессии. Пожалуйста, вернитесь в панель управления и выберите сессию.');
       setLoading(false);
       return;
     }
     
-    console.log(`[TestResultsAdmin] Загрузка данных для сессии: ${sessionId}, источник: ${sessionIdSource}`);
-    
-    // Проверка формата sessionId с UUID
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!uuidRegex.test(sessionId)) {
-      console.error('[TestResultsAdmin] Неверный формат ID сессии, не соответствует UUID');
-      setError(`Некорректный ID сессии: ${sessionId}`);
-      setLoading(false);
-      return;
-    }
-    
-    try {
-      // Загружаем информацию о сессии через API
-      console.log('[TestResultsAdmin] Загрузка сессии через API...');
-      const sessionResponse = await fetch(`/api/test-sessions/${sessionId}`);
-      
-      if (!sessionResponse.ok) {
-        throw new Error(`Ошибка загрузки сессии: ${sessionResponse.statusText}`);
-      }
-      
-      const sessionData = await sessionResponse.json();
-      console.log('[TestResultsAdmin] Данные сессии:', sessionData);
-      
-      if (!sessionData) {
-        setError(`Сессия ${sessionId} не найдена`);
+    // Проверка формата sessionId с UUID только если не принудительная загрузка
+    if (!force_load) {
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (sessionId && !uuidRegex.test(sessionId)) {
+        console.error('[TestResultsAdmin] Неверный формат ID сессии, не соответствует UUID');
+        setError(`Некорректный ID сессии: ${sessionId}`);
         setLoading(false);
         return;
       }
+    }
+    
+    try {
+      // Используем прямые API запросы вместо вызовов supabase
+      logInfo('[TestResultsAdmin] Выполняем API запросы для получения данных...');
       
-      // Загружаем историю диалогов через API
-      console.log('[TestResultsAdmin] Загрузка истории чатов через API...');
-      const chatHistoryResponse = await fetch(`/api/chat-history/${sessionId}`);
-      
-      if (!chatHistoryResponse.ok) {
-        throw new Error(`Ошибка загрузки истории чатов: ${chatHistoryResponse.statusText}`);
+      if (isDevMode) {
+        console.time('Время загрузки данных');
       }
       
-      const chatHistory = await chatHistoryResponse.json();
-      console.log('[TestResultsAdmin] История чатов:', chatHistory);
+      // Получаем информацию о сессии тестирования напрямую через API
+      const sessionResponse = await fetch(`/api/test-sessions/${sessionId}`);
       
-      // Преобразуем историю чатов в диалоги
-      const formattedDialogues = formatDialogues(chatHistory || []);
-      console.log('[TestResultsAdmin] Отформатированные диалоги:', formattedDialogues);
+      if (!sessionResponse.ok) {
+        throw new Error(`Ошибка при загрузке сессии: ${sessionResponse.statusText}`);
+      }
       
-      // Загружаем результаты тестирования через API
-      console.log('[TestResultsAdmin] Загрузка результатов тестирования через API...');
+      const sessionData = await sessionResponse.json();
+      
+      if (!sessionData || !sessionData.session) {
+        throw new Error('Данные о сессии не найдены');
+      }
+      
+      // Извлекаем данные сессии и чатов из ответа API
+      const session = sessionData.session;
+      const chats = sessionData.chats || [];
+      
+      console.log('[TestResultsAdmin] Получены данные сессии:', {
+        sessionId: session.id,
+        employee: session.employee,
+        created_at: session.created_at,
+        chatsCount: chats.length
+      });
+      
+      // Получаем результаты тестирования через API
       const testResultResponse = await fetch(`/api/test-results/${sessionId}`);
       
-      // Даже если результатов нет, мы не выдаем ошибку, а просто показываем диалоги
+      // Обрабатываем результаты тестирования, даже если их нет
       let testResultData = null;
       if (testResultResponse.ok) {
         testResultData = await testResultResponse.json();
-        console.log('[TestResultsAdmin] Результаты тестирования:', testResultData);
+        console.log('[TestResultsAdmin] Получены результаты тестирования:', {
+          resultId: testResultData.id,
+          hasAnalysis: !!testResultData.analysis_result
+        });
+      } else if (testResultResponse.status !== 404) {
+        // Если статус не 404 (Not Found), то это ошибка
+        console.error('[TestResultsAdmin] Ошибка при загрузке результатов:', testResultResponse.statusText);
       } else {
-        console.warn('[TestResultsAdmin] Результаты тестирования не найдены:', testResultResponse.statusText);
+        console.warn('[TestResultsAdmin] Результаты тестирования не найдены для сессии');
       }
       
-      // Кандидат
-      const candidateName = sessionData.employee && sessionData.employee.first_name 
-        ? sessionData.employee.first_name
+      if (isDevMode) {
+        console.timeEnd('Время загрузки данных');
+      }
+      
+      // Обрабатываем историю чатов
+      const formattedDialogues = formatDialogues(chats || []);
+      
+      // Обрабатываем данные кандидата из сессии
+      const candidateName = session.employee && session.employee.first_name 
+        ? `${session.employee.first_name} ${session.employee.last_name || ''}`.trim()
         : 'Неизвестный кандидат';
       
-      // Дата и продолжительность
-      const testDate = formatDate(sessionData.created_at);
-      const testDuration = calculateTestDuration(sessionData.start_time, sessionData.end_time);
+      // Обрабатываем дату и продолжительность
+      const testDate = formatDate(session.created_at);
+      const testDuration = calculateTestDuration(session.start_time, session.end_time);
       
       // Обрабатываем результаты тестирования
       const processedResults = processTestResults(
@@ -742,7 +791,7 @@ function TestResultsAdmin() {
       
       // Устанавливаем диалоги отдельно, чтобы они всегда были доступны
       setDialogues(formattedDialogues || []);
-      setChats(chatHistory || []);
+      setChats(chats || []);
       
       // Если диалоги есть, выбираем первый
       if (formattedDialogues && formattedDialogues.length > 0) {
@@ -755,8 +804,11 @@ function TestResultsAdmin() {
       if (!testResultData) {
         setWarning('Результаты анализа для этой сессии отсутствуют, но вы можете просмотреть диалоги');
       } else {
-        console.log('[TestResultsAdmin] Результаты анализа успешно загружены');
+        logInfo('[TestResultsAdmin] Результаты анализа успешно загружены');
       }
+      
+      // Добавляем дополнительную диагностику
+      debug(sessionId, chats, processedResults);
       
     } catch (error) {
       console.error('[TestResultsAdmin] Ошибка при загрузке данных:', error);
@@ -769,17 +821,15 @@ function TestResultsAdmin() {
 
   // Форматирование даты
   const formatDate = (dateString: string) => {
-    if (!dateString) return '';
+    if (!dateString) return 'Не указана';
     try {
       return new Date(dateString).toLocaleDateString('ru-RU', {
         year: 'numeric',
         month: 'long',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
+        day: 'numeric'
       });
     } catch (e) {
-      return dateString;
+      return 'Неверный формат даты';
     }
   };
 
@@ -796,7 +846,6 @@ function TestResultsAdmin() {
       id: chat.id,
       title: `Диалог с ${characterNames[chat.chat_number - 1] || 'Unknown'}`,
       date: formatDate(chat.created_at || ''),
-      duration: '15 минут',
       score: 85,
       messages: Array.isArray(chat.messages) ? chat.messages.map((msg: ChatMessage, msgIndex: number): DialogueMessage => ({
         id: `msg-${msgIndex}`,
@@ -823,8 +872,12 @@ function TestResultsAdmin() {
 
   // Функция для вычисления продолжительности теста
   const calculateTestDuration = (startTime: string | null | undefined, endTime: string | null | undefined): string => {
-    if (!startTime || !endTime) {
-      return 'Не завершено';
+    if (!startTime) {
+      return 'Не начат';
+    }
+    
+    if (!endTime) {
+      return 'Не завершен';
     }
     
     try {
@@ -832,26 +885,28 @@ function TestResultsAdmin() {
       const end = new Date(endTime);
       const durationMinutes = Math.round((end.getTime() - start.getTime()) / 60000);
       
-      if (durationMinutes < 60) {
-        return `${durationMinutes} минут`;
+      if (durationMinutes < 1) {
+        return 'Меньше минуты';
+      } else if (durationMinutes < 60) {
+        return `${durationMinutes} мин.`;
       } else {
         const hours = Math.floor(durationMinutes / 60);
         const minutes = durationMinutes % 60;
-        return `${hours} ч ${minutes} мин`;
+        return `${hours} ч. ${minutes > 0 ? `${minutes} мин.` : ''}`;
       }
     } catch (error) {
       console.error('Ошибка при расчете продолжительности теста:', error);
-      return 'Неизвестно';
+      return 'Ошибка расчёта';
     }
   };
 
   return (
     <div className="min-h-screen bg-[#1a1a1a] text-gray-100">
       <div className="mx-auto py-8 px-4">
-        {/* Заголовок */}
+        {/* Заголовок - оставляем только здесь кнопку назад */}
         <div className="mb-8 flex items-center gap-4">
           <button 
-            onClick={() => navigate('/admin')} 
+            onClick={() => window.location.href = '/admin'} 
             className="p-2 bg-[#2a2a2a] rounded-full hover:bg-[#3a3a3a] transition-all"
           >
             <ArrowLeft className="w-5 h-5" />
@@ -864,10 +919,53 @@ function TestResultsAdmin() {
 
         {/* Основное содержимое */}
         {loading ? (
-          <div className="flex flex-col items-center justify-center py-20">
+          <motion.div 
+            className="flex flex-col items-center justify-center py-20"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.3 }}
+          >
             <div className="w-16 h-16 border-4 border-t-pink-500 border-pink-500/20 rounded-full animate-spin mb-4"></div>
             <p className="text-gray-400">Загрузка результатов...</p>
-          </div>
+            
+            {/* Скелетон для бесшовной загрузки при переходе с дашборда */}
+            {fromDashboard && (
+              <motion.div 
+                className="w-full max-w-4xl mx-auto mt-8"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 0.5 }}
+                transition={{ duration: 0.5 }}
+              >
+                <div className="bg-[#2d2d2d] rounded-2xl p-6 border border-[#3d3d3d] mb-6">
+                  <div className="h-8 w-64 bg-[#3d3d3d] rounded-md mb-4 animate-pulse"></div>
+                  <div className="h-4 w-full bg-[#3d3d3d] rounded-md mb-2 animate-pulse"></div>
+                  <div className="h-4 w-3/4 bg-[#3d3d3d] rounded-md animate-pulse"></div>
+                </div>
+                
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  <div className="lg:col-span-2 bg-[#2d2d2d] rounded-2xl p-6 border border-[#3d3d3d]">
+                    <div className="h-6 w-48 bg-[#3d3d3d] rounded-md mb-6 animate-pulse"></div>
+                    <div className="space-y-4">
+                      {[1, 2, 3].map(i => (
+                        <div key={i} className="bg-[#1a1a1a] rounded-lg p-4 border border-[#3d3d3d]">
+                          <div className="h-5 w-full bg-[#3d3d3d] rounded-md mb-2 animate-pulse"></div>
+                          <div className="h-4 w-3/4 bg-[#3d3d3d] rounded-md animate-pulse"></div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  <div className="bg-[#2d2d2d] rounded-2xl p-6 border border-[#3d3d3d]">
+                    <div className="h-6 w-40 bg-[#3d3d3d] rounded-md mb-6 animate-pulse"></div>
+                    <div className="space-y-4">
+                      <div className="h-5 w-full bg-[#3d3d3d] rounded-md mb-2 animate-pulse"></div>
+                      <div className="h-4 w-2/3 bg-[#3d3d3d] rounded-md animate-pulse"></div>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </motion.div>
         ) : error ? (
           <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-6">
             <div className="flex items-center gap-3 mb-4">
@@ -937,15 +1035,17 @@ function TestResultsAdmin() {
             {/* Основной контент, показываем только если есть реальные данные */}
             {testResults && dialogues.length > 0 ? (
               <div className="min-h-screen bg-[#1a1a1a] text-gray-100 p-6">
-                {/* Header - убираем дублирующуюся кнопку назад */}
-                <div className="flex items-center gap-4 mb-8">
+                {/* Удаляем дублирующийся заголовок, оставляем только информацию о кандидате */}
+                <div className="mb-8">
                   <motion.div
                     initial={{ opacity: 0, y: -20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.5 }}
                   >
-                    <h1 className="text-2xl font-bold">Результаты теста модели (Админ-панель)</h1>
-                    <p className="text-gray-400 mt-1">Кандидат: {testResults.candidateName} | Дата: {testResults.date} | Продолжительность: {testResults.duration}</p>
+                    <p className="text-gray-400">
+                      <span className="font-medium text-white">Кандидат:</span> {testResults.candidateName || 'Неизвестный кандидат'} | 
+                      <span className="font-medium text-white ml-2">Дата:</span> {testResults.date || 'Не указана'}
+                    </p>
                   </motion.div>
                 </div>
 
@@ -961,7 +1061,7 @@ function TestResultsAdmin() {
                       <h2 className="text-xl font-semibold text-gray-300 mb-2">Общая оценка</h2>
                       <div>
                         <span className={`text-5xl font-bold ${getScoreColorClass(testResults.overallScore)}`}>
-                          {testResults.overallScore}
+                          {testResults.overallScore.toFixed(1)}
                         </span>
                         <span className="text-2xl text-gray-400">/ 5</span>
                       </div>
@@ -1007,6 +1107,10 @@ function TestResultsAdmin() {
                                 </div>
                               </div>
                               <p className="text-gray-400">{param.comment}</p>
+                              <div className="mt-2 text-right">
+                                <span className={`${getScoreColorClass(param.score)} font-semibold`}>{param.score.toFixed(1)}</span>
+                                <span className="text-gray-400 text-sm"> / 5</span>
+                              </div>
                             </div>
                           </div>
                         </motion.div>
@@ -1346,7 +1450,6 @@ function TestResultsAdmin() {
                                 <span className="text-xs px-2 py-1 rounded-full bg-[#2d2d2d] text-gray-300">{dialogue.date}</span>
                               </div>
                               <div className="flex items-center justify-between text-sm text-gray-400">
-                                <span>{dialogue.duration}</span>
                                 {dialogue.messages && dialogue.messages.length > 0 ? (
                                   <span className="flex items-center gap-1">
                                     <MessageCircle className="w-4 h-4" />
@@ -1407,23 +1510,17 @@ function TestResultsAdmin() {
                                   });
                                   
                                   // Проверяем, содержит ли сообщение фото
-                                  const imageMatch = displayContent.match(/\[Фото (\d+)\] \[(.*?)\]/);
+                                  const imageMatch = displayContent.match(/\[Photo (\d+)\] \[(.*?)\]/);
                                   
                                   // Информация о цене и статусе покупки
-                                  const priceMatch = message.content.match(/\[Цена: (.*?)\]/);
+                                  const priceMatch = message.content.match(/\[Price: (.*?)\]/);
                                   const price = priceMatch ? priceMatch[1] : null;
                                   
                                   // Проверяем, есть ли сообщение с тегом [Bought] после фото
                                   let isPaid = false;
                                   if (message.isOwn && imageMatch && price && price !== 'FREE') {
-                                    // Проверяем все следующие сообщения от бота
-                                    for (let i = index + 1; i < currentDialogue.messages.length; i++) {
-                                      const nextMsg = currentDialogue.messages[i];
-                                      if (!nextMsg.isOwn && nextMsg.content.includes('[Bought]')) {
-                                        isPaid = true;
-                                        break;
-                                      }
-                                    }
+                                    // Используем функцию для проверки статуса покупки
+                                    isPaid = checkPhotoPurchaseStatus(currentDialogue.messages, index);
                                   }
                                   
                                   return (
@@ -1452,7 +1549,9 @@ function TestResultsAdmin() {
                                             {price && price !== 'FREE' && (
                                               <div className="flex items-center justify-end gap-2 mt-1">
                                                 <span className="text-xs text-white font-bold flex items-center gap-1">
-                                                  {isPaid ? 'purchased' : 'pending'}
+                                                  <span>${price && `${price.replace('$', '')}`}</span>
+                                                  <span className="text-gray-400 mx-1.5">•</span>
+                                                  <span>{isPaid ? 'paid' : 'not paid'}</span>
                                                   {isPaid ? (
                                                     <Check className="w-3 h-3 text-green-500" />
                                                   ) : (
@@ -1479,36 +1578,6 @@ function TestResultsAdmin() {
                         <AlertCircle className="w-12 h-12 mx-auto mb-4 text-yellow-500" />
                         <h4 className="text-xl font-medium mb-2">История диалогов отсутствует</h4>
                         <p className="text-gray-400 mb-4">Для данной сессии не найдены диалоги.</p>
-                        
-                        <div className="max-w-lg mx-auto text-left bg-[#262626] p-4 rounded-lg border border-[#3d3d3d]">
-                          <h5 className="font-medium mb-2 flex items-center gap-2">
-                            <AlertCircle className="w-5 h-5 text-yellow-500" />
-                            Диагностика данных
-                          </h5>
-                          <ul className="space-y-2 text-sm">
-                            <li className="flex items-start gap-2">
-                              <span className="text-yellow-500 mt-1">•</span>
-                              <span>ID сессии: <code className="bg-[#1a1a1a] px-1 py-0.5 rounded">{sessionId || 'отсутствует'}</code></span>
-                            </li>
-                            <li className="flex items-start gap-2">
-                              <span className="text-yellow-500 mt-1">•</span>
-                              <span>Чаты: {chats.length ? `${chats.length} (все пустые)` : 'не найдены'}</span>
-                            </li>
-                            <li className="flex items-start gap-2">
-                              <span className="text-yellow-500 mt-1">•</span>
-                              <span>Анализ: {testResult ? 'доступен' : 'отсутствует'}</span>
-                            </li>
-                          </ul>
-                          
-                          <div className="mt-4 text-xs text-gray-400">
-                            <p>Возможные причины проблемы:</p>
-                            <ol className="list-decimal pl-5 mt-1 space-y-1">
-                              <li>Тестовая сессия не была завершена</li>
-                              <li>Сообщения не были добавлены в чаты</li>
-                              <li>Результаты анализа не были сгенерированы</li>
-                            </ol>
-                          </div>
-                        </div>
                       </div>
                     )}
                   </motion.div>
@@ -1541,7 +1610,6 @@ function TestResultsAdmin() {
                             <span className="text-xs px-2 py-1 rounded-full bg-[#2d2d2d] text-gray-300">{dialogue.date}</span>
                           </div>
                           <div className="flex items-center justify-between text-sm text-gray-400">
-                            <span>{dialogue.duration}</span>
                             <span className="flex items-center gap-1">
                               <MessageCircle className="w-4 h-4" />
                               {dialogue.messages?.length || 0} сообщений

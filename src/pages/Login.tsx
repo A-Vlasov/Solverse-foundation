@@ -9,7 +9,6 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [debugInfo, setDebugInfo] = useState<string>('');
   
   // Инициализируем только на клиенте
   useEffect(() => {
@@ -19,18 +18,13 @@ export default function Login() {
     const checkConnection = async () => {
       try {
         const response = await fetch('/api/auth');
-        const data = await response.json();
-        
         if (response.ok) {
           console.log('API connection successful');
-          setDebugInfo(prev => prev + '\nAPI connection successful');
         } else {
           console.error('API connection error');
-          setDebugInfo(prev => prev + '\nAPI connection error: ' + data.error);
         }
       } catch (err) {
         console.error('Error checking API connection:', err);
-        setDebugInfo(prev => prev + `\nError checking API: ${err instanceof Error ? err.message : String(err)}`);
       }
     };
     
@@ -44,7 +38,6 @@ export default function Login() {
     const isAdmin = typeof window !== 'undefined' && localStorage.getItem('isAdmin') === 'true';
     if (isLoggedIn && isAdmin && userRole === 'admin') {
       console.log('User already logged in, redirecting to admin');
-      setDebugInfo(prev => prev + '\nUser already logged in, redirecting to admin');
       window.location.href = '/admin';
     }
   }, [isLoggedIn, userRole, isMounted]);
@@ -52,20 +45,17 @@ export default function Login() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     console.log('Form submitted');
-    setDebugInfo(prev => prev + '\nForm submitted');
     setError('');
     setLoading(true);
 
     try {
       if (!username || !password) {
         setError('Введите имя пользователя и пароль');
-        setDebugInfo(prev => prev + '\nEmpty username or password');
         setLoading(false);
         return;
       }
 
       console.log('Sending auth request to server...');
-      setDebugInfo(prev => prev + '\nSending auth request to server');
       
       // Вместо прямого обращения к базе данных, используем серверный API
       try {
@@ -80,7 +70,6 @@ export default function Login() {
         const data = await response.json();
         
         console.log('Auth response:', response.status, data);
-        setDebugInfo(prev => prev + `\nAuth response: ${response.status}, ${JSON.stringify(data)}`);
 
         if (!response.ok) {
           console.error('Login error:', data.error);
@@ -91,7 +80,6 @@ export default function Login() {
 
         // Успешный вход в систему
         console.log('Login successful, user ID:', data.user.id);
-        setDebugInfo(prev => prev + `\nLogin successful, user ID: ${data.user.id}`);
         login(data.user.id, data.user.role);
         
         // Сохраняем факт авторизации в localStorage для сохранения сессии
@@ -101,17 +89,14 @@ export default function Login() {
         
         // Перенаправляем на страницу администратора с использованием window.location
         console.log('Navigating to /admin');
-        setDebugInfo(prev => prev + '\nNavigating to /admin');
         window.location.href = '/admin';
       } catch (apiError) {
         console.error('API error:', apiError);
-        setDebugInfo(prev => prev + `\nAPI error: ${apiError instanceof Error ? apiError.message : String(apiError)}`);
         setError('Ошибка при соединении с сервером');
         setLoading(false);
       }
     } catch (err) {
       console.error('Login error:', err);
-      setDebugInfo(prev => prev + `\nGeneral error: ${err instanceof Error ? err.message : String(err)}`);
       setError('Ошибка при входе в систему');
     } finally {
       setLoading(false);
@@ -169,12 +154,6 @@ export default function Login() {
           >
             {loading ? 'Вход...' : 'Войти'}
           </button>
-          
-          {debugInfo && (
-            <div className="mt-6 p-3 bg-gray-800 rounded-lg overflow-auto max-h-40 text-xs font-mono">
-              <div className="text-gray-400 whitespace-pre-wrap">{debugInfo}</div>
-            </div>
-          )}
         </form>
       </div>
     </div>

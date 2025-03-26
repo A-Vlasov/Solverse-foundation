@@ -42,31 +42,13 @@ export default function Header() {
   // Не показываем хедер на страницах входа и чата
   if (
     location.pathname === '/login' || 
-    location.pathname.includes('/test-session/')
+    location.pathname.includes('/test-session/') ||
+    location.pathname.includes('/test-results/') || 
+    location.pathname.includes('/admin/session/')
   ) {
     return null;
   }
   
-  // Показываем только кнопку назад для страниц результатов тестирования
-  if (
-    location.pathname.includes('/test-results/') || 
-    location.pathname.includes('/admin/session/')
-  ) {
-    return (
-      <header className="bg-[#1a1a1a] border-b border-[#3d3d3d] p-4">
-        <div className="container mx-auto flex items-center justify-between">
-          <button 
-            onClick={() => navigate('/admin')}
-            className="p-2 rounded-lg hover:bg-[#3d3d3d] transition-colors flex items-center gap-2 text-gray-300"
-          >
-            <ChevronLeft className="w-5 h-5" />
-            <span>Назад</span>
-          </button>
-        </div>
-      </header>
-    );
-  }
-
   // Проверяем, авторизован ли пользователь как администратор
   const isAdmin = localStorage.getItem('isAdmin') === 'true';
 
