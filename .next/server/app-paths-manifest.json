@@ -1,15 +1,6 @@
 {
-  "/page": "app/page.js",
-  "/login/page": "app/login/page.js",
-  "/api/auth/route": "app/api/auth/route.js",
-  "/api/employees/route": "app/api/employees/route.js",
-  "/api/test-sessions/route": "app/api/test-sessions/route.js",
+  "/_not-found/page": "app/_not-found/page.js",
   "/candidate/page": "app/candidate/page.js",
-  "/api/employees/create/route": "app/api/employees/create/route.js",
-  "/test-info/page": "app/test-info/page.js",
-  "/chat/page": "app/chat/page.js",
   "/test-session/[sessionId]/page": "app/test-session/[sessionId]/page.js",
-  "/api/chat/route": "app/api/chat/route.js",
-  "/admin/page": "app/admin/page.js",
   "/admin/new-employee/page": "app/admin/new-employee/page.js"
 }

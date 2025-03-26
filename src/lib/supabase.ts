@@ -1613,6 +1613,9 @@ export async function getCandidateForm(employeeId: string) {
 // Функция для обновления статуса чата (печатание, прочитано и т.д.)
 export async function updateChatStatus(sessionId: string, chatNumber: 1 | 2 | 3 | 4, status: { isTyping?: boolean, unreadCount?: number }) {
   try {
+    console.log('Updating chat status:', { sessionId, chatNumber, status });
+    
+    // Получаем сессию для проверки её существования
     const session = await getTestSession(sessionId);
     
     if (!session) {
@@ -1623,25 +1626,65 @@ export async function updateChatStatus(sessionId: string, chatNumber: 1 | 2 | 3 
       throw new Error('Невозможно обновить статус для завершенной сессии');
     }
     
-    // В зависимости от реализации базы данных, здесь нужно будет обновить статус чата
-    // Например, можно использовать таблицу chat_status или добавить метаданные к сессии
+    // Находим чат по номеру
+    const { data: chats, error: chatsError } = await supabase
+      .from('chats')
+      .select('*')
+      .eq('test_session_id', sessionId)
+      .eq('chat_number', chatNumber);
     
-    // Пример реализации (нужно адаптировать под вашу структуру данных)
-    const { data, error } = await supabase
-      .from('test_sessions')
-      .update({
-        [`chat_${chatNumber}_status`]: status
-      })
-      .eq('id', sessionId)
-      .select();
-    
-    if (error) {
-      throw error;
+    if (chatsError) {
+      console.error('Error fetching chat:', chatsError);
+      throw chatsError;
     }
     
-    return data?.[0] || null;
+    if (!chats || chats.length === 0) {
+      console.warn('Chat not found, creating a new one');
+      
+      // Если чата нет, создаем новый
+      const { data: newChat, error: createError } = await supabase
+        .from('chats')
+        .insert({
+          test_session_id: sessionId,
+          chat_number: chatNumber,
+          messages: [],
+          metadata: status // Сохраняем статус в метаданных
+        })
+        .select();
+      
+      if (createError) {
+        console.error('Error creating chat:', createError);
+        throw createError;
+      }
+      
+      return newChat?.[0] || null;
+    }
+    
+    // Обновляем метаданные чата
+    const chat = chats[0];
+    const existingMetadata = chat.metadata || {};
+    
+    const { data: updatedChat, error: updateError } = await supabase
+      .from('chats')
+      .update({
+        metadata: {
+          ...existingMetadata,
+          ...status
+        },
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', chat.id)
+      .select();
+    
+    if (updateError) {
+      console.error('Error updating chat metadata:', updateError);
+      throw updateError;
+    }
+    
+    console.log('Chat status updated successfully');
+    return updatedChat?.[0] || null;
   } catch (error) {
-    console.error('Error updating chat status:', error);
+    console.error('Error in updateChatStatus:', error);
     throw error;
   }
 }

@@ -1,4 +1,4 @@
-// File: C:\Users\Administrator\Documents\GitHub\onlyfans_last_chance\onlyfans\app\layout.tsx
+// File: D:\BOLT\app\layout.tsx
 import * as entry from '../../../app/layout.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 

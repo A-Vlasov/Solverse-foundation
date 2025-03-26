@@ -133,8 +133,8 @@ export const testSessionService = {
 
 export const chatService = {
   getMessages: (sessionId: string) => apiService.get<any[]>('/api/chat', { sessionId }),
-  sendMessage: (sessionId: string, message: string, employeeId: string, chatNumber: number) => 
-    apiService.post<any>('/api/chat', { sessionId, message, employeeId, chatNumber }),
+  sendMessage: (sessionId: string, message: string, employeeId: string, chatNumber: number, conversationDetails?: any) => 
+    apiService.post<any>('/api/chat', { sessionId, message, employeeId, chatNumber, conversationDetails }),
   completeSession: (sessionId: string) => 
     apiService.post<any>('/api/chat/complete', { sessionId }),
   analyzeChat: (sessionId: string) => 

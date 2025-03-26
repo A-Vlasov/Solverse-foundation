@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { generateGrokResponse } from '../../../../src/lib/supabase';
+import { generateGrokResponse } from '../../../../src/services/grok';
 
 // POST /api/grok/generate - генерировать ответ от Grok
 export async function POST(request: NextRequest) {

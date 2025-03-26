@@ -1,10 +1,16 @@
 ---
+description: Coding
+globs: 
+alwaysApply: true
+---
+---
 description: How to write code
 globs: 
 alwaysApply: true
 ---
 # Coding pattern preferences
 
+- Don't make changes to the layout unless explicitly asked to do so, no need to invent new components or rework old ones
 - Always prefer simple solutions
 - Avoid duplication of code whenever possible, which means checking for
   other areas of the codebase that might already have similar code and
