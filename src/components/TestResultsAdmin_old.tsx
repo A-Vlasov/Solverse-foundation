@@ -25,14 +25,13 @@ import {
   TestSession, 
   Chat, 
   ChatMessage, 
-  getEmployeeTestSessions,
+  getEmployeeTestSessions, 
   getTestResultForSession,
   getEmployee,
   getTestSession,
   TestResult,
   DialogAnalysisResult
 } from '../lib/supabase';
-import { fetchWithCache } from '../lib/cache';
 
 // Add new interfaces for chat data
 interface DialogueMessage {
@@ -70,8 +69,6 @@ interface TestResultState {
     score: number;
     strengths: string[];
     weaknesses: string[];
-    level?: string;
-    details?: string;
   };
   salesPerformance: {
     introduction: {
@@ -113,20 +110,23 @@ interface DialogueMessageWithPurchaseInfo extends DialogueMessage {
 }
 
 // Добавляем функцию для диагностики
-const debug = (sessionId: string, chats: Chat[], testResult: TestResultState) => {
+const debug = (sessionId: string, chats: Chat[], testResult: TestResult | null) => {
   console.log('=== ДИАГНОСТИКА ДАННЫХ СЕССИИ ===');
-  console.log('SessionId:', sessionId || 'Не указан');
+  console.log('SessionId:', sessionId);
   console.log('Формат URL страницы должен быть: /admin/session/:sessionId');
-  console.log('Chats:', chats.length > 0 ? {
+  console.log('Chats:', {
     count: chats.length,
-    messagesCounts: chats.map(c => c.messages?.length || 0)
-  } : 'Отсутствуют');
-  console.log('Test Result:', testResult.parameters?.length > 0 ? {
-    candidateName: testResult.candidateName,
-    overallScore: testResult.overallScore,
-    parameters: testResult.parameters.length
-  } : 'Отсутствует');
-  
+    withMessages: chats.filter(c => c.messages && c.messages.length > 0).length,
+    chatNumbers: chats.map(c => c.chat_number),
+    messagesCounts: chats.map(c => (c.messages ? c.messages.length : 0))
+  });
+  console.log('Test Result:', testResult ? {
+    id: testResult.id,
+    hasAnalysisResult: !!testResult.analysis_result,
+    metrics: testResult.analysis_result?.dialog_analysis?.metrics ? 
+      Object.keys(testResult.analysis_result.dialog_analysis.metrics) : 
+      'отсутствуют'
+  } : 'отсутствует');
   console.log('Возможные причины проблемы:');
   console.log('1. Сессия существует, но чаты не созданы (должно быть 4 чата)');
   console.log('2. Чаты созданы, но сообщения отсутствуют (messagesCounts должны быть > 0)');
@@ -160,22 +160,12 @@ function TestResultsAdmin() {
   const location = useLocation();
   const { sessionId: paramSessionId } = useParams<{ sessionId: string }>();
   
-  // Более простая проверка валидности UUID
-  const isValidUUID = (id: string | null): boolean => {
-    if (!id) return false;
-    return id.length >= 32 && id.includes('-'); // Упрощенная проверка
-  };
-  
-  // Определяем sessionId с менее строгой проверкой
+  // Дополнительно проверяем URL напрямую
   const pathSegments = location.pathname.split('/');
   const lastSegment = pathSegments[pathSegments.length - 1];
-  
-  // Определяем, находимся ли на странице /admin без указания ID
-  const isAdminPage = location.pathname === '/admin' || location.pathname === '/admin/';
-  const sessionId = isAdminPage ? null : (paramSessionId || lastSegment);
+  const sessionId = paramSessionId || lastSegment;
   
   console.log('URL path:', location.pathname);
-  console.log('isAdminPage:', isAdminPage);
   console.log('Extracted sessionId from URL:', sessionId);
 
   const [selectedDialogue, setSelectedDialogue] = useState<string | null>(null);
@@ -184,8 +174,6 @@ function TestResultsAdmin() {
   const [error, setError] = useState<string | null>(null);
   const [dialogues, setDialogues] = useState<Dialogue[]>([]);
   const [dataLoaded, setDataLoaded] = useState(false);
-  const [allSessions, setAllSessions] = useState<TestSession[]>([]);
-  const [loadingSessions, setLoadingSessions] = useState(false);
   const [testResult, setTestResult] = useState<TestResultState>({
     candidateName: '',
     overallScore: 0,
@@ -221,8 +209,8 @@ function TestResultsAdmin() {
     dialogues: []
   });
 
-  // Mock data с той же структурой
-  const [testResults, setTestResults] = useState<TestResultState>({
+  // Mock data - поменяем на пустой объект с той же структурой
+  const [testResults, setTestResults] = useState({
     candidateName: '',
     overallScore: 0,
     date: '',
@@ -260,69 +248,58 @@ function TestResultsAdmin() {
   // Function to get color class based on score
   const getScoreColorClass = (score: number) => {
     if (score >= 4.5) return 'text-green-500';
-    if (score >= 4.0) return 'text-green-400';
-    if (score >= 3.5) return 'text-blue-400';
-    if (score >= 3.0) return 'text-blue-300';
-    if (score >= 2.5) return 'text-yellow-400';
-    if (score >= 2.0) return 'text-yellow-300';
-    if (score >= 1.5) return 'text-orange-400';
-    if (score >= 1.0) return 'text-orange-300';
+    if (score >= 3.5) return 'text-blue-500';
+    if (score >= 2.5) return 'text-yellow-500';
     return 'text-red-500';
   };
 
-  // Function to get background color class for parameter icon
+  // Function to get background color class based on parameter color
   const getParameterBgClass = (color: string) => {
-    switch (color) {
-      case 'blue': return 'bg-blue-100 text-blue-600';
-      case 'purple': return 'bg-purple-100 text-purple-600';
-      case 'yellow': return 'bg-yellow-100 text-yellow-600';
-      case 'green': return 'bg-green-100 text-green-600';
-      case 'pink': return 'bg-pink-100 text-pink-600';
-      default: return 'bg-gray-100 text-gray-600';
-    }
+    const colorMap: Record<string, string> = {
+      'blue': 'bg-blue-500',
+      'purple': 'bg-purple-500',
+      'yellow': 'bg-yellow-500',
+      'green': 'bg-green-500',
+      'pink': 'bg-pink-500'
+    };
+    return colorMap[color] || 'bg-gray-500';
   };
 
   // Function to get progress bar color based on percentage
   const getProgressBarColor = (percentage: number) => {
-    if (percentage >= 80) return 'bg-green-500';
-    if (percentage >= 60) return 'bg-blue-500';
-    if (percentage >= 40) return 'bg-yellow-500';
-    if (percentage >= 20) return 'bg-orange-500';
-    return 'bg-red-500';
+    if (percentage >= 80) return 'bg-gradient-to-r from-green-500 to-green-400';
+    if (percentage >= 60) return 'bg-gradient-to-r from-blue-500 to-blue-400';
+    if (percentage >= 40) return 'bg-gradient-to-r from-yellow-500 to-yellow-400';
+    return 'bg-gradient-to-r from-red-500 to-red-400';
   };
 
-  // Function to render star rating
+  // Function to render stars based on score
   const renderStars = (score: number) => {
-    const stars = [];
-    for (let i = 1; i <= 5; i++) {
-      stars.push(
-        <Star 
-          key={i} 
-          className={`w-4 h-4 ${i <= score ? 'text-yellow-400 fill-yellow-400' : 'text-gray-300'}`} 
-        />
-      );
-    }
-    return stars;
+    return Array.from({ length: 5 }).map((_, index) => (
+      <Star 
+        key={index} 
+        className={`w-5 h-5 ${index < score ? 'text-yellow-500 fill-yellow-500' : 'text-gray-400'}`} 
+      />
+    ));
   };
 
-  // Calculate overall score from metrics
+  // Рассчитываем среднюю оценку по всем метрикам
   const calculateOverallScore = (metrics: Record<string, any>) => {
+    if (!metrics) return 0;
+    
     const scores = [
       metrics.engagement.score,
       metrics.charm_and_tone.score,
       metrics.creativity.score,
       metrics.adaptability.score,
-      metrics.self_promotion.score
+      metrics.self_promotion.score,
+      metrics.pricing_policy?.score || 0 // Добавляем ценовую политику, если она есть
     ];
     
-    // Если есть ценовая политика, добавляем её оценку
-    if (metrics.pricing_policy && metrics.pricing_policy.score) {
-      scores.push(metrics.pricing_policy.score);
-    }
-    
-    // Вычисляем среднее
-    const sum = scores.reduce((a, b) => a + b, 0);
-    return sum / scores.length;
+    // Рассчитываем среднее значение
+    const validScores = scores.filter(score => score > 0);
+    const sum = validScores.reduce((acc, score) => acc + score, 0);
+    return validScores.length > 0 ? sum / validScores.length : 0;
   };
 
   // Animation variants
@@ -359,313 +336,348 @@ function TestResultsAdmin() {
     }
   };
 
-  // Функция для загрузки списка всех сессий
-  const loadAllSessions = async () => {
-    if (!isAdminPage) return;
-    
-    try {
-      setLoadingSessions(true);
-      // TODO: Заменить на реальный API-запрос, когда он будет доступен
-      const sessions = await fetch('/api/test-sessions')
-        .then(res => res.ok ? res.json() : [])
-        .catch(() => []);
-      
-      if (Array.isArray(sessions) && sessions.length > 0) {
-        setAllSessions(sessions);
-      } else {
-        console.warn('Failed to load sessions from API, using mock data');
-        // Создаем тестовый набор сессий для отображения
-        const mockSessions = [
-          { 
-            id: 'test-id-1', 
-            created_at: new Date().toISOString(), 
-            employee_id: 'emp-1',
-            start_time: new Date().toISOString(),
-            end_time: null,
-            completed: false,
-            updated_at: new Date().toISOString(),
-            employee: { first_name: 'Тестовый', last_name: 'Пользователь' } 
-          },
-          { 
-            id: 'test-id-2', 
-            created_at: new Date(Date.now() - 86400000).toISOString(), 
-            employee_id: 'emp-2',
-            start_time: new Date(Date.now() - 86400000).toISOString(),
-            end_time: new Date(Date.now() - 86300000).toISOString(),
-            completed: true,
-            updated_at: new Date(Date.now() - 86300000).toISOString(),
-            employee: { first_name: 'Иван', last_name: 'Петров' } 
-          },
-          { 
-            id: 'test-id-3', 
-            created_at: new Date(Date.now() - 172800000).toISOString(), 
-            employee_id: 'emp-3',
-            start_time: new Date(Date.now() - 172800000).toISOString(),
-            end_time: new Date(Date.now() - 172700000).toISOString(),
-            completed: true,
-            updated_at: new Date(Date.now() - 172700000).toISOString(),
-            employee: { first_name: 'Мария', last_name: 'Сидорова' } 
-          },
-        ];
-        setAllSessions(mockSessions as TestSession[]);
-      }
-    } catch (error) {
-      console.error('Error loading sessions:', error);
-    } finally {
-      setLoadingSessions(false);
-    }
-  };
-
   // Загрузка данных при монтировании компонента
   useEffect(() => {
-    if (isAdminPage) {
-      // Если мы на странице /admin, загружаем список сессий
-      setLoading(false);
-      loadAllSessions();
-    } else {
-      loadData();
-    }
-  }, [sessionId, location.state?.employeeId, location.pathname, isAdminPage]);
+    const loadData = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        setDataLoaded(false);
 
-  // Оптимизированная функция загрузки данных через серверный API
-  const loadData = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      setDataLoaded(false);
+        console.log('Loading data for sessionId:', sessionId);
 
-      console.log('Loading data for sessionId:', sessionId);
+        // Проверяем, передан ли ID сессии в URL
+        if (sessionId) {
+          console.log('Trying to load test session:', sessionId);
+          
+          // Получаем информацию о сессии (независимо от результатов анализа)
+          try {
+            const session = await getTestSession(sessionId);
+            console.log('Session loaded:', session);
+            
+            if (session) {
+              // Загружаем историю чатов независимо от результатов анализа
+              console.log('Loading chat history for session:', sessionId);
+              const chatHistory = await getChatHistory(sessionId);
+              console.log('Chat history loaded, chats count:', chatHistory?.length || 0);
+              setChats(chatHistory || []);
+              
+              // Обновляем основную информацию о сессии
+              setTestResults(prev => ({
+                ...prev,
+                candidateName: session.employee ? 
+                  `${session.employee.first_name}` : 
+                  'Неизвестный соискатель',
+                date: new Date(session.created_at).toLocaleDateString(),
+                duration: session.end_time ? 
+                  `${Math.round((new Date(session.end_time).getTime() - new Date(session.start_time).getTime()) / 60000)} минут` : 
+                  'В процессе'
+              }));
+              
+              // Преобразуем чаты в формат диалогов для отображения
+              if (chatHistory && chatHistory.length > 0) {
+                // Массив имен персонажей
+                const characterNames = ['Marcus', 'Shrek', 'Oliver', 'Alex'];
+                
+                const newDialogues: Dialogue[] = chatHistory.map((chat, index) => ({
+                  id: chat.id,
+                  title: `Диалог с ${characterNames[chat.chat_number - 1] || 'Unknown'}`,
+                  date: new Date(chat.created_at).toLocaleDateString(),
+                  duration: '15 минут',
+                  score: 85,
+                  messages: Array.isArray(chat.messages) ? chat.messages.map((msg, msgIndex): DialogueMessage => ({
+                    id: `msg-${msgIndex}`,
+                    time: new Date(session.created_at).toLocaleTimeString('ru-RU', {
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    }),
+                    content: msg.content,
+                    isOwn: msg.isOwn,
+                    isRead: msg.isRead,
+                    role: msg.isOwn ? 'user' : 'assistant'
+                  })) : []
+                }));
 
-      // Проверяем, передан ли ID сессии
-      if (sessionId) {
-        console.log('Trying to load test session:', sessionId);
+                // Сортируем диалоги по номеру чата
+                newDialogues.sort((a, b) => {
+                  const aNumber = characterNames.indexOf(a.title.split(' с ')[1]);
+                  const bNumber = characterNames.indexOf(b.title.split(' с ')[1]);
+                  return aNumber - bNumber;
+                });
+
+                setDialogues(newDialogues);
+              } else {
+                console.log('No chat history found or empty chats');
+                setDialogues([]);
+              }
+            }
+          } catch (sessionError) {
+            console.error('Error loading session:', sessionError);
+          }
+          
+          // Загружаем результаты анализа для сессии (отдельно от базовой информации)
+          try {
+            console.log('Loading test results for session:', sessionId);
+            const result = await getTestResultForSession(sessionId);
+            console.log('Test results loaded:', result?.id ? 'Found' : 'Not found');
+            
+            if (result && result.analysis_result) {
+              setTestResult(result);
+              const analysis = result.analysis_result.dialog_analysis;
+              
+              // Рассчитываем общую оценку
+              const overallScore = calculateOverallScore(analysis.metrics);
+              
+              // Обновляем тестовые результаты реальными данными
+              setTestResults(prev => ({
+                ...prev,
+                overallScore: parseFloat(overallScore.toFixed(1)),
+                parameters: [
+                  {
+                    name: 'Вовлеченность',
+                    score: analysis.metrics.engagement.score,
+                    comment: analysis.metrics.engagement.verdict,
+                    icon: <MessageCircle className="w-6 h-6" />,
+                    color: 'blue'
+                  },
+                  {
+                    name: 'Обаяние и тон',
+                    score: analysis.metrics.charm_and_tone.score,
+                    comment: analysis.metrics.charm_and_tone.verdict,
+                    icon: <Smile className="w-6 h-6" />,
+                    color: 'purple'
+                  },
+                  {
+                    name: 'Креативность',
+                    score: analysis.metrics.creativity.score,
+                    comment: analysis.metrics.creativity.verdict,
+                    icon: <Lightbulb className="w-6 h-6" />,
+                    color: 'yellow'
+                  },
+                  {
+                    name: 'Адаптивность',
+                    score: analysis.metrics.adaptability.score,
+                    comment: analysis.metrics.adaptability.verdict,
+                    icon: <RefreshCw className="w-6 h-6" />,
+                    color: 'green'
+                  },
+                  {
+                    name: 'Умение продавать себя',
+                    score: analysis.metrics.self_promotion.score,
+                    comment: analysis.metrics.self_promotion.verdict,
+                    icon: <DollarSign className="w-6 h-6" />,
+                    color: 'pink'
+                  }
+                ],
+                // Обновляем данные о ценовой политике, если они доступны
+                ...(analysis.metrics.pricing_policy ? {
+                  pricingEvaluation: {
+                    score: analysis.metrics.pricing_policy.score,
+                    level: analysis.metrics.pricing_policy.score >= 4 ? 'Высокая' : 
+                           analysis.metrics.pricing_policy.score >= 3 ? 'Средняя' : 'Низкая',
+                    strengths: analysis.metrics.pricing_policy.strengths || [],
+                    weaknesses: analysis.metrics.pricing_policy.improvements || [],
+                    details: analysis.metrics.pricing_policy.verdict
+                  }
+                } : {}),
+                
+                // Обновляем данные о трех этапах продаж, если они доступны
+                ...(analysis.metrics.sales_stages ? {
+                  salesPerformance: {
+                    introduction: {
+                      score: analysis.metrics.sales_stages.introduction.score,
+                      conversionRate: Math.round(analysis.metrics.sales_stages.introduction.score * 20), // Преобразуем оценку 0-5 в процент 0-100
+                      strengths: analysis.metrics.sales_stages.introduction.strengths || [],
+                      weaknesses: analysis.metrics.sales_stages.introduction.weaknesses || []
+                    },
+                    warmup: {
+                      score: analysis.metrics.sales_stages.warmup.score,
+                      conversionRate: Math.round(analysis.metrics.sales_stages.warmup.score * 20),
+                      strengths: analysis.metrics.sales_stages.warmup.strengths || [],
+                      weaknesses: analysis.metrics.sales_stages.warmup.weaknesses || []
+                    },
+                    sales: {
+                      score: analysis.metrics.sales_stages.closing.score,
+                      conversionRate: Math.round(analysis.metrics.sales_stages.closing.score * 20),
+                      strengths: analysis.metrics.sales_stages.closing.strengths || [],
+                      weaknesses: analysis.metrics.sales_stages.closing.weaknesses || []
+                    }
+                  }
+                } : {}),
+                
+                recommendations: analysis.result_summary ? [analysis.result_summary] : ['Нет рекомендаций']
+              }));
+            } else {
+              console.log('Test results not found or analysis not available, using default scores');
+            }
+          } catch (resultError) {
+            console.error('Error loading test results:', resultError);
+          }
+          
+          // Вызываем функцию диагностики после загрузки данных
+          debug(sessionId, chats, testResult);
+          
+          // После успешной загрузки данных
+          setDataLoaded(true);
+        } else if (location.state?.employeeId) {
+          // Если передан ID сотрудника через location.state, используем его
+          const employeeId = location.state.employeeId;
+          console.log('Loading data by employeeId:', employeeId);
+          await loadChatHistory(employeeId);
+          
+          // После успешной загрузки данных
+          setDataLoaded(true);
+        } else {
+          // Если нет ни ID сессии, ни ID сотрудника, используем тестовые данные
+          console.log('Using mock data, no sessionId or employeeId provided');
+          setLoading(false);
+          setDataLoaded(true);
+        }
+      } catch (err) {
+        console.error('Error loading data:', err);
+        setError('Ошибка при загрузке данных. Используются тестовые данные.');
+        setDataLoaded(true);
+      } finally {
+        setLoading(false);
         
-        try {
-          // Получаем информацию о сессии (сначала пробуем через API, потом напрямую)
-          console.log('Loading session via direct DB...');
-          const session = await getTestSession(sessionId);
-          console.log('Session loaded via direct DB:', session);
-          
-          if (!session) {
-            throw new Error('Сессия не найдена');
-          }
-          
-          // Загружаем историю чатов через прямой запрос к базе данных
-          console.log('Loading chat history via direct DB...');
-          const chatHistory = await getChatHistory(sessionId);
-          console.log('Chat history loaded via direct DB, chats count:', chatHistory?.length || 0);
-          
-          // Устанавливаем чаты независимо от успеха следующих запросов
-          setChats(chatHistory || []);
-          
-          // Обновляем основную информацию о сессии
-          const updatedTestResults = {
-            ...testResults,
-            candidateName: session.employee ? 
-              `${session.employee.first_name || ''} ${session.employee.last_name || ''}`.trim() : 
-              'Неизвестный соискатель',
-            date: new Date(session.created_at || Date.now()).toLocaleDateString(),
-            duration: session.end_time ? 
-              `${Math.round((new Date(session.end_time).getTime() - new Date(session.start_time || session.created_at).getTime()) / 60000)} минут` : 
-              'В процессе'
-          };
-          
-          setTestResults(updatedTestResults);
-          
-          // Преобразуем чаты в формат диалогов для отображения
-          if (chatHistory && chatHistory.length > 0) {
-            // Массив имен персонажей
-            const characterNames = ['Marcus', 'Shrek', 'Oliver', 'Alex'];
-            
-            const newDialogues: Dialogue[] = chatHistory.map((chat: Chat) => ({
-              id: chat.id,
-              title: `Диалог с ${characterNames[chat.chat_number - 1] || 'Unknown'}`,
-              date: new Date(chat.created_at || Date.now()).toLocaleDateString(),
-              duration: '15 минут',
-              score: 85,
-              messages: Array.isArray(chat.messages) ? chat.messages.map((msg: ChatMessage, msgIndex: number): DialogueMessage => ({
-                id: `msg-${msgIndex}`,
-                time: new Date(msg.time || session.created_at || Date.now()).toLocaleTimeString('ru-RU', {
-                  hour: '2-digit',
-                  minute: '2-digit'
-                }),
-                content: msg.content || '',
-                isOwn: Boolean(msg.isOwn),
-                isRead: Boolean(msg.isRead),
-                role: Boolean(msg.isOwn) ? 'user' : 'assistant'
-              })) : []
-            }));
+        // Дополнительная диагностика после завершения загрузки
+        if (sessionId) {
+          debug(sessionId, chats, testResult);
+        }
+      }
+    };
+    
+    loadData();
+  }, [sessionId, location.state?.employeeId, location.pathname]);
 
-            // Сортируем диалоги по номеру чата
-            newDialogues.sort((a, b) => {
-              const aNumber = characterNames.indexOf(a.title.split(' с ')[1]);
-              const bNumber = characterNames.indexOf(b.title.split(' с ')[1]);
-              return aNumber - bNumber;
-            });
+  // Обновляем функцию loadChatHistory для обработки сообщений
+  const loadChatHistory = async (employeeId: string) => {
+    try {
+      console.log('Loading employee test sessions for:', employeeId);
+      const employeeSessions = await getEmployeeTestSessions(employeeId);
+      console.log('Employee sessions found:', employeeSessions.length);
+          
+      if (employeeSessions.length > 0) {
+        const latestSession = employeeSessions[0];
+        console.log('Using latest session:', latestSession.id);
+            
+        const chatHistory = await getChatHistory(latestSession.id);
+        console.log('Chats loaded for session:', chatHistory.length);
+        setChats(chatHistory);
 
-            setDialogues(newDialogues);
-            
-            // Обновляем состояние с диалогами
-            setTestResults(prev => ({
-              ...prev,
-              dialogues: newDialogues
-            }));
-          } else {
-            // Если нет чатов, устанавливаем пустой массив
-            setDialogues([]);
-            console.warn('No chat messages found for session:', sessionId);
-          }
+        // Массив имен персонажей
+        const characterNames = ['Marcus', 'Shrek', 'Oliver', 'Alex'];
+
+        // Преобразуем чаты в диалоги с обработкой тегов покупки
+        const newDialogues = chatHistory.map((chat, index) => {
+          // Создаем массив для обработанных сообщений
+          const processedMessages: DialogueMessageWithPurchaseInfo[] = [];
           
-          // Загружаем результаты теста, если они есть
-          console.log('Loading test results via direct DB...');
-          const result = await getTestResultForSession(sessionId);
-          console.log('Test results loaded via direct DB:', result ? 'Found' : 'Not found');
-          
-          // Если есть результаты анализа, обновляем состояние
-          if (result && result.analysis_result) {
-            // Приводим TestResult к TestResultState, чтобы избежать ошибки типов
-            const resultState = result as unknown as TestResultState;
-            setTestResult(resultState);
-            const analysis = result.analysis_result.dialog_analysis;
+          // Обрабатываем каждое сообщение
+          for (let i = 0; i < chat.messages.length; i++) {
+            const msg = chat.messages[i];
             
-            // Рассчитываем общую оценку
-            const overallScore = calculateOverallScore(analysis.metrics);
+            // Создаем обработанное сообщение
+            const processedMsg: DialogueMessageWithPurchaseInfo = {
+              ...msg,
+              id: `msg-${chat.id}-${i}`,
+              time: new Date(msg.time || latestSession.created_at).toLocaleTimeString('ru-RU', {
+                hour: '2-digit',
+                minute: '2-digit'
+              }),
+              role: msg.isOwn ? 'user' : 'assistant',
+              content: msg.content // Содержимое пока оставляем без изменений
+            };
             
-            // Обновляем тестовые результаты реальными данными
-            setTestResults(prev => ({
-              ...prev,
-              overallScore: parseFloat(overallScore.toFixed(1)),
-              parameters: [
-                {
-                  name: 'Вовлеченность',
-                  score: analysis.metrics.engagement.score,
-                  comment: analysis.metrics.engagement.verdict,
-                  icon: <MessageCircle className="w-6 h-6" />,
-                  color: 'blue'
-                },
-                {
-                  name: 'Обаяние и тон',
-                  score: analysis.metrics.charm_and_tone.score,
-                  comment: analysis.metrics.charm_and_tone.verdict,
-                  icon: <Smile className="w-6 h-6" />,
-                  color: 'purple'
-                },
-                {
-                  name: 'Креативность',
-                  score: analysis.metrics.creativity.score,
-                  comment: analysis.metrics.creativity.verdict,
-                  icon: <Lightbulb className="w-6 h-6" />,
-                  color: 'yellow'
-                },
-                {
-                  name: 'Адаптивность',
-                  score: analysis.metrics.adaptability.score,
-                  comment: analysis.metrics.adaptability.verdict,
-                  icon: <RefreshCw className="w-6 h-6" />,
-                  color: 'green'
-                },
-                {
-                  name: 'Умение продавать себя',
-                  score: analysis.metrics.self_promotion.score,
-                  comment: analysis.metrics.self_promotion.verdict,
-                  icon: <DollarSign className="w-6 h-6" />,
-                  color: 'pink'
-                }
-              ],
-              recommendations: analysis.result_summary ? [analysis.result_summary] : [],
-              pricingEvaluation: {
-                score: analysis.metrics.pricing_policy?.score || 0,
-                strengths: analysis.metrics.pricing_policy?.strengths || [],
-                weaknesses: analysis.metrics.pricing_policy?.improvements || [],
-                level: analysis.metrics.pricing_policy ? (
-                  analysis.metrics.pricing_policy.score >= 4 ? 'Высокая' : 
-                  analysis.metrics.pricing_policy.score >= 3 ? 'Средняя' : 'Низкая'
-                ) : undefined,
-                details: analysis.metrics.pricing_policy?.verdict
-              },
-              salesPerformance: {
-                introduction: {
-                  score: analysis.metrics.sales_stages?.introduction?.score || 0,
-                  conversionRate: Math.round((analysis.metrics.sales_stages?.introduction?.score || 0) * 20),
-                  strengths: analysis.metrics.sales_stages?.introduction?.strengths || [],
-                  weaknesses: analysis.metrics.sales_stages?.introduction?.weaknesses || []
-                },
-                warmup: {
-                  score: analysis.metrics.sales_stages?.warmup?.score || 0,
-                  conversionRate: Math.round((analysis.metrics.sales_stages?.warmup?.score || 0) * 20),
-                  strengths: analysis.metrics.sales_stages?.warmup?.strengths || [],
-                  weaknesses: analysis.metrics.sales_stages?.warmup?.weaknesses || []
-                },
-                sales: {
-                  score: analysis.metrics.sales_stages?.closing?.score || 0,
-                  conversionRate: Math.round((analysis.metrics.sales_stages?.closing?.score || 0) * 20),
-                  strengths: analysis.metrics.sales_stages?.closing?.strengths || [],
-                  weaknesses: analysis.metrics.sales_stages?.closing?.weaknesses || []
+            // Проверяем сообщения от бота
+            if (!msg.isOwn) {
+              // Проверяем наличие тега [Bought]
+              const hasBoughtTag = msg.content.includes('[Bought]');
+              console.log('Message from bot:', msg.content, 'Has bought tag:', hasBoughtTag);
+              
+              if (hasBoughtTag) {
+                // Ищем последнее фото от пользователя
+                for (let j = i - 1; j >= 0; j--) {
+                  if (chat.messages[j].isOwn && chat.messages[j].content.includes('[Фото')) {
+                    console.log('Found photo message:', chat.messages[j].content);
+                    
+                    // Ищем информацию о цене
+                    const priceMatch = chat.messages[j].content.match(/\[Цена: (.*?)\]/);
+                    const price = priceMatch ? priceMatch[1] : null;
+                    
+                    if (price && price !== 'FREE') {
+                      // Находим сообщение с фото в обработанных сообщениях
+                      const photoIndex = processedMessages.findIndex(m => m.id === `msg-${chat.id}-${j}`);
+                      
+                      if (photoIndex !== -1) {
+                        console.log('Updating photo message with bought status');
+                        processedMessages[photoIndex].bought = true;
+                        processedMessages[photoIndex].price = price;
+                      }
+                    }
+                    break;
+                  }
                 }
               }
-            }));
-          } else {
-            console.warn('No test results found for session:', sessionId);
+              
+              // Очищаем сообщение от тегов
+              processedMsg.content = cleanMessageTags(msg.content);
+            } else {
+              // Проверяем сообщения пользователя на наличие цены
+              const priceMatch = msg.content.match(/\[Цена: (.*?)\]/);
+              if (priceMatch && priceMatch[1] !== 'FREE') {
+                processedMsg.price = priceMatch[1];
+              }
+            }
+            
+            // Добавляем обработанное сообщение в массив
+            processedMessages.push(processedMsg);
           }
           
-          setDataLoaded(true);
-        } catch (error) {
-          console.error('Error in data loading flow:', error);
-          setError(`Ошибка при загрузке данных: ${error instanceof Error ? error.message : String(error)}`);
-          setDataLoaded(true);
-        }
-      } else if (location.state?.employeeId) {
-        // Если передан ID сотрудника через location.state, используем его
-        const employeeId = location.state.employeeId;
-        console.log('Loading data by employeeId:', employeeId);
+          // Создаем объект диалога с обработанными сообщениями
+          return {
+            id: chat.id,
+            title: `Диалог с ${characterNames[chat.chat_number - 1] || 'Unknown'}`,
+            date: new Date(chat.created_at).toLocaleDateString(),
+            duration: '15 минут',
+            score: 85,
+            messages: processedMessages
+          };
+        });
+
+        // Сортируем диалоги по имени персонажа
+        newDialogues.sort((a, b) => {
+          const aNumber = characterNames.indexOf(a.title.split(' с ')[1]);
+          const bNumber = characterNames.indexOf(b.title.split(' с ')[1]);
+          return aNumber - bNumber;
+        });
+
+        setDialogues(newDialogues);
         
-        try {
-          // Загружаем сессии сотрудника напрямую из БД
-          const employeeSessions = await getEmployeeTestSessions(employeeId);
-          console.log('Employee sessions found:', employeeSessions?.length || 0);
-          
-          if (employeeSessions && employeeSessions.length > 0) {
-            // Перенаправляем на страницу с последней сессией
-            navigate(`/admin/session/${employeeSessions[0].id}`);
-          } else {
-            setError('Нет результатов тестов для данного сотрудника');
-            setDataLoaded(true);
-          }
-        } catch (error) {
-          console.error('Error loading employee data:', error);
-          setError(`Ошибка при загрузке данных сотрудника: ${error instanceof Error ? error.message : String(error)}`);
-          setDataLoaded(true);
-        }
+        // Обновляем информацию о кандидате
+        const firstName = latestSession?.employee?.first_name || '';
+        const employeeName = firstName ? firstName : 'Неизвестный сотрудник';
+        
+        setTestResults(prev => ({
+          ...prev,
+          candidateName: employeeName,
+          date: new Date(latestSession.created_at).toLocaleDateString(),
+          duration: latestSession.end_time 
+            ? `${Math.round((new Date(latestSession.end_time).getTime() - new Date(latestSession.created_at).getTime()) / 60000)} минут`
+            : 'В процессе'
+        }));
       } else {
-        // Если нет ID сессии, показываем сообщение
-        console.log('No sessionId provided');
-        setError('Отсутствует ID сессии. Пожалуйста, выберите сессию для просмотра результатов.');
-        setLoading(false);
-        setDataLoaded(true);
+        console.log('No test sessions found for employee');
       }
     } catch (err) {
-      console.error('Error loading data:', err);
-      setError('Ошибка при загрузке данных.');
-      setDataLoaded(true);
-    } finally {
-      setLoading(false);
+      console.error('Error loading chat history:', err);
+      setError('Ошибка при загрузке истории чатов');
     }
   };
 
-  // Форматирование даты
-  const formatDate = (dateString: string) => {
-    if (!dateString) return '';
-    try {
-      return new Date(dateString).toLocaleDateString('ru-RU', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      });
-    } catch (e) {
-      return dateString;
-    }
+  // Добавим простую проверку на наличие данных
+  const hasRealData = () => {
+    return testResults.candidateName !== '' && testResults.parameters.length > 0;
   };
 
   return (
@@ -685,70 +697,23 @@ function TestResultsAdmin() {
           </div>
         </div>
 
-        {/* Основное содержимое */}
+        {/* Основное содержимое - добавляем условие для отображения */}
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20">
             <div className="w-16 h-16 border-4 border-t-pink-500 border-pink-500/20 rounded-full animate-spin mb-4"></div>
             <p className="text-gray-400">Загрузка результатов...</p>
           </div>
         ) : error ? (
-          <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <AlertCircle className="w-8 h-8 text-red-500" />
-              <h3 className="text-xl font-semibold">Ошибка загрузки данных</h3>
-            </div>
-            <p className="text-gray-400 mb-6">{error}</p>
-            
-            {isAdminPage && (
-              <>
-                <div className="mb-6">
-                  <h4 className="font-medium text-white text-lg mb-3">Доступные сессии тестирования:</h4>
-                  
-                  {loadingSessions ? (
-                    <div className="flex items-center justify-center py-8">
-                      <div className="w-10 h-10 border-4 border-t-blue-500 border-blue-500/20 rounded-full animate-spin"></div>
-                    </div>
-                  ) : allSessions.length > 0 ? (
-                    <div className="space-y-3 mt-4">
-                      {allSessions.map(session => (
-                        <div 
-                          key={session.id}
-                          className="bg-[#2a2a2a] p-4 rounded-lg border border-[#3d3d3d] hover:border-blue-500 transition-all cursor-pointer"
-                          onClick={() => navigate(`/admin/session/${session.id}`)}
-                        >
-                          <div className="flex justify-between items-center">
-                            <div>
-                              <h5 className="font-medium">
-                                {session.employee ? 
-                                  `${session.employee.first_name || ''} ${session.employee.last_name || ''}`.trim() :
-                                  'Неизвестный кандидат'}
-                              </h5>
-                              <p className="text-sm text-gray-400">{formatDate(session.created_at)}</p>
-                            </div>
-                            <div className="p-2 rounded-full bg-blue-500/10 text-blue-400">
-                              <ArrowLeft className="w-5 h-5 transform rotate-180" />
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-center py-8 bg-[#2a2a2a] rounded-lg">
-                      <p className="text-gray-400">Нет доступных сессий тестирования</p>
-                    </div>
-                  )}
-                </div>
-                
-                <div className="flex justify-center">
-                  <button 
-                    onClick={() => loadAllSessions()} 
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                  >
-                    Обновить список сессий
-                  </button>
-                </div>
-              </>
-            )}
+          <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-6 text-center">
+            <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold mb-2">Ошибка загрузки данных</h3>
+            <p className="text-gray-400">{error}</p>
+            <button 
+              onClick={() => window.location.reload()} 
+              className="mt-4 px-4 py-2 bg-[#2a2a2a] rounded-lg hover:bg-[#3a3a3a] transition-all"
+            >
+              Попробовать снова
+            </button>
           </div>
         ) : !dataLoaded ? (
           <div className="flex flex-col items-center justify-center py-20">
@@ -1157,19 +1122,19 @@ function TestResultsAdmin() {
                     <div className="space-y-6">
                       {/* Dialog List */}
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        {dialogues.map((dialogue) => (
-                          <div 
-                            key={dialogue.id} 
+                      {dialogues.map((dialogue) => (
+                        <div 
+                          key={dialogue.id} 
                             className={`p-4 rounded-lg border ${selectedDialogue === dialogue.id ? 'bg-[#3d3d3d] border-purple-500' : 'bg-[#1a1a1a] border-[#3d3d3d] hover:bg-[#262626] hover:border-[#4d4d4d]'} cursor-pointer transition-colors`}
                             onClick={() => setSelectedDialogue(dialogue.id)}
                           >
                             <div className="flex justify-between items-start mb-3">
                                 <h4 className="font-medium">{dialogue.title}</h4>
                               <span className="text-xs px-2 py-1 rounded-full bg-[#2d2d2d] text-gray-300">{dialogue.date}</span>
-                            </div>
+                                </div>
                             <div className="flex items-center justify-between text-sm text-gray-400">
                               <span>{dialogue.duration}</span>
-                              {dialogue.messages && dialogue.messages.length > 0 ? (
+                              {dialogue.messages.length > 0 ? (
                                 <span className="flex items-center gap-1">
                                   <MessageCircle className="w-4 h-4" />
                                   {dialogue.messages.length} сообщений
@@ -1180,22 +1145,20 @@ function TestResultsAdmin() {
                                   Нет сообщений
                                 </span>
                               )}
-                            </div>
-                          </div>
+                                </div>
+                              </div>
                         ))}
-                      </div>
+                          </div>
 
                       {/* Selected Dialog */}
                       {selectedDialogue && (
                         <div className="mt-6 bg-[#1a1a1a] rounded-lg border border-[#3d3d3d] p-4">
                           <h4 className="font-medium mb-4">
-                            {dialogues.find(d => d.id === selectedDialogue)?.title || 'Диалог'}
+                            {dialogues.find(d => d.id === selectedDialogue)?.title}
                           </h4>
                           
                           <div className="space-y-4">
-                            {selectedDialogue && 
-                             dialogues.find(d => d.id === selectedDialogue) && 
-                             dialogues.find(d => d.id === selectedDialogue)?.messages?.length > 0 ? (
+                            {selectedDialogue && dialogues.find(d => d.id === selectedDialogue)?.messages?.length > 0 ? (
                               (() => {
                                 // Получаем объект диалога, чтобы не выполнять поиск многократно
                                 const currentDialogue = dialogues.find(d => d.id === selectedDialogue);
@@ -1294,9 +1257,9 @@ function TestResultsAdmin() {
                               </div>
                             )}
                           </div>
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
                   ) : (
                     <div className="text-center py-12 bg-[#1a1a1a] rounded-lg border border-[#3d3d3d]">
                       <AlertCircle className="w-12 h-12 mx-auto mb-4 text-yellow-500" />
