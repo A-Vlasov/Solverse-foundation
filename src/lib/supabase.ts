@@ -639,17 +639,22 @@ export async function completeTestSession(
 
     console.log('✅ Test session completed successfully:', data);
     
-    // Обновление кэша в localStorage для немедленного отражения изменений
-    try {
-      const cacheKey = `test_session_${sessionId}`;
-      localStorage.setItem(cacheKey, JSON.stringify({
-        ...data,
-        cached_at: new Date().toISOString()
-      }));
-      console.log('✅ Session cache updated in localStorage');
-    } catch (cacheError) {
-      console.warn('⚠️ Failed to update local cache:', cacheError);
-      // Игнорируем ошибку кэширования, это некритично
+    // Проверяем, доступен ли localStorage (только на клиенте)
+    const isLocalStorageAvailable = typeof window !== 'undefined' && window.localStorage;
+    
+    // Обновление кэша в localStorage для немедленного отражения изменений, если он доступен
+    if (isLocalStorageAvailable) {
+      try {
+        const cacheKey = `test_session_${sessionId}`;
+        localStorage.setItem(cacheKey, JSON.stringify({
+          ...data,
+          cached_at: new Date().toISOString()
+        }));
+        console.log('✅ Session cache updated in localStorage');
+      } catch (cacheError) {
+        console.warn('⚠️ Failed to update local cache:', cacheError);
+        // Игнорируем ошибку кэширования, это некритично
+      }
     }
     
     return data;
@@ -663,24 +668,29 @@ export async function getRecentTestSessions(limit: number = 20): Promise<TestSes
   try {
     console.log('🔍 Fetching recent test sessions, limit:', limit);
     
-    // Сначала проверим кэш в localStorage
-    try {
-      const cacheKey = 'recent_test_sessions';
-      const cachedData = localStorage.getItem(cacheKey);
-      
-      if (cachedData) {
-        const { sessions, timestamp } = JSON.parse(cachedData);
-        const cacheAge = Date.now() - new Date(timestamp).getTime();
+    // Проверяем, доступен ли localStorage (только на клиенте)
+    const isLocalStorageAvailable = typeof window !== 'undefined' && window.localStorage;
+    
+    // Сначала проверим кэш в localStorage, если он доступен
+    if (isLocalStorageAvailable) {
+      try {
+        const cacheKey = 'recent_test_sessions';
+        const cachedData = localStorage.getItem(cacheKey);
         
-        // Если кэш не старше 5 секунд (5000 мс), используем его
-        if (cacheAge < 5000 && Array.isArray(sessions) && sessions.length > 0) {
-          console.log('📋 Using cached test sessions, age:', Math.round(cacheAge / 1000), 'seconds');
-          return sessions;
+        if (cachedData) {
+          const { sessions, timestamp } = JSON.parse(cachedData);
+          const cacheAge = Date.now() - new Date(timestamp).getTime();
+          
+          // Если кэш не старше 5 секунд (5000 мс), используем его
+          if (cacheAge < 5000 && Array.isArray(sessions) && sessions.length > 0) {
+            console.log('📋 Using cached test sessions, age:', Math.round(cacheAge / 1000), 'seconds');
+            return sessions;
+          }
         }
+      } catch (cacheError) {
+        console.warn('⚠️ Cache error:', cacheError);
+        // Продолжаем без использования кэша
       }
-    } catch (cacheError) {
-      console.warn('⚠️ Cache error:', cacheError);
-      // Продолжаем без использования кэша
     }
     
     const { data, error } = await supabase
@@ -763,17 +773,19 @@ export async function getRecentTestSessions(limit: number = 20): Promise<TestSes
       messages_count: s.chats?.reduce((total, chat) => total + (chat.messages?.length || 0), 0) || 0
     })));
     
-    // Кэшируем результат в localStorage
-    try {
-      const cacheKey = 'recent_test_sessions';
-      localStorage.setItem(cacheKey, JSON.stringify({
-        sessions: uniqueSessions,
-        timestamp: new Date().toISOString()
-      }));
-      console.log('✅ Sessions cached in localStorage');
-    } catch (cacheError) {
-      console.warn('⚠️ Failed to cache sessions:', cacheError);
-      // Игнорируем ошибку кэширования
+    // Кэшируем результат в localStorage, если он доступен
+    if (isLocalStorageAvailable) {
+      try {
+        const cacheKey = 'recent_test_sessions';
+        localStorage.setItem(cacheKey, JSON.stringify({
+          sessions: uniqueSessions,
+          timestamp: new Date().toISOString()
+        }));
+        console.log('✅ Sessions cached in localStorage');
+      } catch (cacheError) {
+        console.warn('⚠️ Failed to cache sessions:', cacheError);
+        // Игнорируем ошибку кэширования
+      }
     }
     
     return uniqueSessions;

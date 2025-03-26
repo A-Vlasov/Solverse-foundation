@@ -124,7 +124,28 @@ export const employeeService = {
 
 export const testSessionService = {
   getAll: (limit?: number) => apiService.get<any[]>('/api/test-sessions', limit ? { limit } : {}),
-  getById: (id: string) => apiService.get<any>(`/api/test-sessions?id=${id}`),
+  getById: async (id: string) => {
+    console.log('TestSessionService: Fetching session by ID:', id);
+    const apiUrl = `/api/test-sessions/${id}`;
+    console.log('TestSessionService: API URL:', apiUrl);
+    
+    try {
+      const response = await fetch(apiUrl);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`TestSessionService: API request failed: ${response.status} ${response.statusText}`, errorText);
+        throw new Error(`API request failed: ${response.status} ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      console.log('TestSessionService: Raw API response:', data);
+      return data;
+    } catch (error) {
+      console.error('TestSessionService: Error in getById:', error);
+      throw error;
+    }
+  },
   create: (employeeId: string) => apiService.post<any>('/api/test-sessions', { employeeId }),
   complete: (id: string) => apiService.patch<any>('/api/test-sessions', { action: 'complete' }, { id }),
   addMessage: (id: string, chatId: number, message: any) => 
