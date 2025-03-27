@@ -42,6 +42,11 @@ interface DialogueMessage {
   isOwn: boolean;
   isRead?: boolean;
   role?: 'user' | 'assistant';
+  // Добавляем поля для отслеживания состояния покупки фотографий
+  bought?: boolean;
+  purchased?: boolean;
+  boughtTag?: boolean;
+  price?: string;
 }
 
 interface Dialogue {
@@ -97,9 +102,8 @@ interface TestResultState {
 
 // Сделаем функцию очистки тегов более универсальной и эффективной
 const cleanMessageTags = (text: string): string => {
-  // Удаляем все теги в формате [тег]
+  // Удаляем только тег [Not Bought], оставляем [Bought] для корректной работы функции checkPhotoPurchaseStatus
   return text
-    .replace(/\[\s*Bought\s*\]/gi, '')
     .replace(/\[\s*Not\s*Bought\s*\]/gi, '')
     .trim()
     .replace(/\s+/g, ' '); // Убираем лишние пробелы
@@ -136,7 +140,6 @@ const debug = (sessionId: string, chats: Chat[], testResult: TestResultState) =>
 // Добавляем простую функцию для очистки сообщений от тегов прямо перед возвратом компонента
 const cleanContent = (text: string): string => {
   return text
-    .replace(/\[\s*Bought\s*\]/gi, '')
     .replace(/\[\s*Not\s*Bought\s*\]/gi, '')
     .replace(/\s+/g, ' ')
     .trim();
@@ -144,13 +147,49 @@ const cleanContent = (text: string): string => {
 
 // Добавляем функцию для определения статуса покупки фотографии
 const checkPhotoPurchaseStatus = (dialogueMessages: DialogueMessage[], photoMsgIndex: number): boolean => {
+  // Получаем сообщение с фотографией
+  const photoMsg = dialogueMessages[photoMsgIndex];
+  
+  // Проверяем, если у сообщения с фото уже есть флаги bought или purchased
+  if (photoMsg.bought || photoMsg.purchased) {
+    console.log('Фото уже помечено как купленное через флаги bought/purchased');
+    return true;
+  }
+  
+  // Проверяем текущее сообщение - есть ли в нем тег [Bought]
+  if (photoMsg.content && photoMsg.content.includes('[Bought]')) {
+    console.log('Найден тег [Bought] в самом сообщении с фото');
+    return true;
+  }
+  
+  // Извлекаем информацию о цене из сообщения с фото
+  const priceMatch = photoMsg.content.match(/\[Price: (.*?)\]/);
+  if (!priceMatch || priceMatch[1] === 'FREE') {
+    console.log('Фото бесплатное или цена не указана');
+    return false; // Если фото бесплатное, нет смысла проверять его покупку
+  }
+  
   // Проверяем все сообщения после фотографии
   for (let i = photoMsgIndex + 1; i < dialogueMessages.length; i++) {
+    const msg = dialogueMessages[i];
+    
     // Ищем только в ответах бота
-    if (!dialogueMessages[i].isOwn && dialogueMessages[i].content.includes('[Bought]')) {
-      return true;
+    if (!msg.isOwn) {
+      // Проверяем наличие тега [Bought] в содержимом сообщения
+      if (msg.content.includes('[Bought]')) {
+        console.log('Найден тег [Bought] в сообщении бота #' + i);
+        return true;
+      }
+      
+      // Проверяем наличие маркера покупки в оригинальном сообщении
+      if (msg.boughtTag || msg.purchased || msg.bought) {
+        console.log('Найден флаг покупки в метаданных сообщения #' + i);
+        return true;
+      }
     }
   }
+  
+  // Фотография с ценой, но не найдено признаков покупки
   return false;
 };
 
@@ -856,7 +895,12 @@ function TestResultsAdmin() {
         content: msg.content || '',
         isOwn: Boolean(msg.isOwn),
         isRead: Boolean(msg.isRead),
-        role: Boolean(msg.isOwn) ? 'user' : 'assistant'
+        role: Boolean(msg.isOwn) ? 'user' : 'assistant',
+        // Добавляем поля для отслеживания состояния покупки фотографий
+        bought: msg.bought,
+        purchased: msg.purchased,
+        boughtTag: msg.boughtTag,
+        price: msg.price
       })) : []
     }));
     
@@ -880,24 +924,8 @@ function TestResultsAdmin() {
       return 'Не завершен';
     }
     
-    try {
-      const start = new Date(startTime);
-      const end = new Date(endTime);
-      const durationMinutes = Math.round((end.getTime() - start.getTime()) / 60000);
-      
-      if (durationMinutes < 1) {
-        return 'Меньше минуты';
-      } else if (durationMinutes < 60) {
-        return `${durationMinutes} мин.`;
-      } else {
-        const hours = Math.floor(durationMinutes / 60);
-        const minutes = durationMinutes % 60;
-        return `${hours} ч. ${minutes > 0 ? `${minutes} мин.` : ''}`;
-      }
-    } catch (error) {
-      console.error('Ошибка при расчете продолжительности теста:', error);
-      return 'Ошибка расчёта';
-    }
+    // Независимо от реального времени начала и окончания, возвращаем фиксированное значение в 20 минут
+    return '20 мин.';
   };
 
   return (
@@ -1551,7 +1579,9 @@ function TestResultsAdmin() {
                                                 <span className="text-xs text-white font-bold flex items-center gap-1">
                                                   <span>${price && `${price.replace('$', '')}`}</span>
                                                   <span className="text-gray-400 mx-1.5">•</span>
-                                                  <span>{isPaid ? 'paid' : 'not paid'}</span>
+                                                  <span className={isPaid ? "text-green-500" : "text-gray-400"}>
+                                                    {isPaid ? 'paid' : 'not paid'}
+                                                  </span>
                                                   {isPaid ? (
                                                     <Check className="w-3 h-3 text-green-500" />
                                                   ) : (

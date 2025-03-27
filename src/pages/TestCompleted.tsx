@@ -6,7 +6,7 @@ export default function TestCompleted() {
   const navigate = useNavigate();
 
   const handleBackToHome = () => {
-    navigate('/');
+    window.location.href = '/';
   };
 
   return (

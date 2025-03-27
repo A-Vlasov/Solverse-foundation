@@ -265,7 +265,7 @@ function Chat() {
   
   const [message, setMessage] = useState('');
   const [selectedUser, setSelectedUser] = useState('Marcus');
-  const [timeRemaining, setTimeRemaining] = useState(300); // Изменено с 1200 секунд (20 минут) на 300 секунд (5 минут)
+  const [timeRemaining, setTimeRemaining] = useState(1200); // Изменено с 300 секунд (5 минут) на 1200 секунд (20 минут)
   const [showCongratulations, setShowCongratulations] = useState(false);
   const [calculatingResults, setCalculatingResults] = useState(false);
   const [isSessionComplete, setIsSessionComplete] = useState(false);
@@ -1839,8 +1839,8 @@ function Chat() {
             className="flex-1 overflow-y-auto p-4 space-y-4"
           >
             {chatHistories[selectedUser].map((msg) => {
-              const imagePrompt = msg.content.match(/\[Фото \d+\] \[(.*?)\]/)?.[1];
-              const priceMatch = msg.content.match(/\[Цена: (.*?)\]/);
+              const imagePrompt = msg.content.match(/\[Photo \d+\] \[(.*?)\]/)?.[1];
+              const priceMatch = msg.content.match(/\[Price: (.*?)\]/);
               const price = msg.price || (priceMatch ? priceMatch[1] : null);
               
               // Очищаем текст от тегов [Купил] и [Не купил] непосредственно при рендеринге
@@ -1861,7 +1861,7 @@ function Chat() {
                   if (chatIndex > 0) {
                     for (let i = chatIndex - 1; i >= 0; i--) {
                       const photoMsg = chatHistories[selectedUser][i];
-                      if (photoMsg.isOwn && (photoMsg.imageUrl || photoMsg.content.includes('[Фото'))) {
+                      if (photoMsg.isOwn && (photoMsg.imageUrl || photoMsg.content.includes('[Photo'))) {
                         // Если найдено фото и оно имеет цену, обновляем статус
                         if (photoMsg.price && photoMsg.price !== 'FREE' && !photoMsg.bought) {
                           // Используем setTimeout, чтобы обновить состояние после рендеринга
@@ -1931,7 +1931,7 @@ function Chat() {
                           <div className="mt-1 rounded-md overflow-hidden">
                             <div className="relative">
                               <img 
-                                src={msg.imageUrl || `/foto/${msg.content.match(/\[Фото (\d+)\]/)?.[1]}.jpg`} 
+                                src={msg.imageUrl || `/foto/${msg.content.match(/\[Photo (\d+)\]/)?.[1]}.jpg`} 
                             alt="Отправленное изображение" 
                                 className="max-w-[200px] h-auto rounded-md border border-[#3d3d3d]"
                               />
