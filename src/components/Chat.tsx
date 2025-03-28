@@ -542,7 +542,7 @@ function Chat() {
               sessionStorage.setItem('currentTestSessionId', sessionId);
               
               // Проверяем, существуют ли чаты для этой сессии
-              const sessionChats = await chatService.getMessages(sessionId);
+              const sessionChats = await chatService.getHistory(sessionId);
               
               if (sessionChats && sessionChats.length > 0) {
                 console.log('📋 Session has', sessionChats.length, 'chats');
@@ -571,7 +571,7 @@ function Chat() {
           console.log('🔍 Found existing session ID in storage:', existingSessionId);
           // Проверяем, существуют ли чаты для этой сессии
           try {
-            const existingChats = await chatService.getMessages(existingSessionId);
+            const existingChats = await chatService.getHistory(existingSessionId);
             console.log('📋 Existing chats found:', existingChats.length, 'with messages:',
               existingChats.map(c => ({ chatNumber: c.chat_number, messageCount: c.messages?.length || 0 })));
             
@@ -1255,12 +1255,13 @@ function Chat() {
       
       // Получаем информацию о сессии для привязки к сотруднику
       console.log('Получаем информацию о сессии');
-      const session = await getTestSession(sessionId);
+      const sessionResponse = await testSessionService.getById(sessionId);
       
-      if (!session) {
+      if (!sessionResponse || !sessionResponse.session) {
         throw new Error('Сессия не найдена');
       }
       
+      const session = sessionResponse.session;
       console.log('Сессия найдена:', session.id, 'Сотрудник:', session.employee_id);
       
       // Создаем базовую запись с результатами для сохранения в любом случае
@@ -1324,8 +1325,8 @@ function Chat() {
         ];
         const overallScore = scores.reduce((sum, score) => sum + score, 0) / scores.length;
         
-        // Сохраняем базовую запись через прямой вызов функции
-        await saveTestResult({
+        // Сохраняем базовую запись через API
+        await testResultService.save({
           test_session_id: sessionId,
           employee_id: session.employee_id,
           raw_prompt: "Анализ не выполнен",

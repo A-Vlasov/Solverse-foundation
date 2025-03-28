@@ -111,8 +111,9 @@ class ApiService {
   }
 }
 
-// Singleton экземпляр сервиса
-export const apiService = new ApiService();
+// Создаем экземпляр сервиса для использования другими сервисами
+const apiService = new ApiService();
+export default apiService;
 
 // Специализированные сервисы
 export const employeeService = {
@@ -150,18 +151,17 @@ export const testSessionService = {
   complete: (id: string) => apiService.patch<any>('/api/test-sessions', { action: 'complete' }, { id }),
   addMessage: (id: string, chatId: number, message: any) => 
     apiService.patch<any>('/api/test-sessions', { action: 'addMessage', chatId, message }, { id }),
+  getChats: (sessionId: string) => apiService.get<any[]>('/api/chat-history', { sessionId }),
+  updateStatus: (sessionId: string, chatNumber: number, statusData: any) => 
+    apiService.patch<any>('/api/chat-history/status', { sessionId, chatNumber, ...statusData }),
 };
 
 export const chatService = {
-  getMessages: (sessionId: string) => apiService.get<any[]>('/api/chat', { sessionId }),
-  sendMessage: (sessionId: string, message: string, employeeId: string, chatNumber: number, conversationDetails?: any) => 
+  sendMessage: (sessionId: string, message: string, employeeId: string, chatNumber: number, conversationDetails?: any) =>
     apiService.post<any>('/api/chat', { sessionId, message, employeeId, chatNumber, conversationDetails }),
-  completeSession: (sessionId: string) => 
-    apiService.post<any>('/api/chat/complete', { sessionId }),
-  analyzeChat: (sessionId: string) => 
-    apiService.post<any>('/api/chat/analyze', { sessionId }),
-  updateStatus: (sessionId: string, chatNumber: number, status: { isTyping?: boolean, unreadCount?: number }) => 
-    apiService.post<any>('/api/chat/status', { sessionId, chatNumber, status }),
+  getHistory: (sessionId: string) => apiService.get<any[]>('/api/chat', { sessionId }),
+  updateStatus: (sessionId: string, chatNumber: number, statusData: any) => 
+    apiService.patch<any>('/api/chat/status', { sessionId, chatNumber, ...statusData }),
 };
 
 export const candidateFormService = {
@@ -176,12 +176,7 @@ export const testResultService = {
   analyze: (sessionId: string, employeeId: string) => 
     apiService.post<any>('/api/test-results', { sessionId, employeeId, analyzeNow: true }),
   save: (data: any) => apiService.post<any>('/api/test-results', data),
-};
-
-export const grokService = {
-  generateResponse: (messages: any[], conversationDetails?: any) => 
-    apiService.post<any>('/api/grok/generate', { messages, conversationDetails }),
-  analyzeDialogs: (prompt: string) => apiService.put<any>('/api/grok/analyze', { prompt }),
+  getAnalysis: (sessionId: string) => apiService.get<any>('/api/test-results/analysis', { sessionId }),
 };
 
 // Сервис для работы с изображениями
@@ -217,4 +212,12 @@ export const imageService = {
   updateMetadata: (id: string, metadata: { description?: string, prompt?: string }) => 
     apiService.patch<any>(`/api/images/${id}`, metadata),
   delete: (id: string) => apiService.delete<any>(`/api/images/${id}`),
+};
+
+// Сервис для работы с Grok API
+export const grokService = {
+  generateResponse: (messages: any[], conversationDetails?: any) => 
+    apiService.post<any>('/api/grok/chat', { messages, conversationDetails }),
+  analyzeDialogs: (prompt: string) => 
+    apiService.post<any>('/api/grok/analyze', { prompt }),
 }; 
