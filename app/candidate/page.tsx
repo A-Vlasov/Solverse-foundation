@@ -1,7 +1,9 @@
 'use client';
 
-import CandidateForm from '../../src/components/CandidateForm';
+import CandidateForm from '@/modules/candidate-form/components/organisms/CandidateForm';
 
 export default function CandidatePage() {
-  return <CandidateForm />;
+  return (
+    <CandidateForm />
+  );
 } 

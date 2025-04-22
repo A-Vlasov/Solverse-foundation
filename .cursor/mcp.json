@@ -1,15 +1,15 @@
 {
   "mcpServers": {
-    "supabase_test": {
-      "command": "C:\\Windows\\System32\\cmd.exe",
-      "args": [
-        "/c",
-        "npx",
-        "-y",
-        "@modelcontextprotocol/server-postgres",
-        "postgresql://postgres.avrrtcxtcfavymdywmpz:G5dJJhcNqK0rnhy5@aws-0-eu-central-1.pooler.supabase.com:5432/postgres"
-      ]
-    },
+"supabase": {
+        "command": "C:\\Windows\\System32\\cmd.exe",
+        "args": [
+          "/c",
+          "npx",
+          "-y",
+          "@modelcontextprotocol/server-postgres",
+          "postgresql:
+        ]
+      },
     "browser": {
       "command": "C:\\Windows\\System32\\cmd.exe",
       "args": [
@@ -17,6 +17,12 @@
         "npx",
         "@agentdeskai/browser-tools-mcp"
       ]
-    }
+    },
+    
+        "context7": {
+          "command": "npx",
+          "args": ["-y", "@upstash/context7-mcp@latest"]
+      }
+    
   }
 }
