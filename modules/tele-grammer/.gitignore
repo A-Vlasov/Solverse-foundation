@@ -1,0 +1,21 @@
+# Зависимости
+node_modules
+package-lock.json
+
+# Файлы среды
+.env
+
+# Логи
+logs
+*.log
+npm-debug.log*
+
+# Файлы сессии
+session.json
+*.session
+*.session-journal
+
+# Прочее
+.DS_Store
+.vscode
+.idea 
