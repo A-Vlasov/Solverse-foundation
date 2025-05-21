@@ -1,0 +1,5 @@
+telegramApi:
+  - handleChatMessage:
+  - getSetupChatId:
+greeting:
+  - hello:

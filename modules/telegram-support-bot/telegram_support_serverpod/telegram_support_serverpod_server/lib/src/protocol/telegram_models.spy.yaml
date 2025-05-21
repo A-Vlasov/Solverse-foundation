@@ -1,0 +1,6 @@
+class: ChatMessageResponse
+fields:
+  reply: String
+  forwarded: bool
+  status: String
+  errorMessage: String? 
