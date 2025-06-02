@@ -1,36 +1,82 @@
-This is a [Next.js](https:
+# OnlyFans Test Application
 
-## Getting Started
+## Архитектура приложения
 
-First, run the development server:
+Приложение построено на основе серверной архитектуры Next.js, где все операции с базой данных выполняются на стороне сервера через API маршруты.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+### Серверные API
 
-Open [http:
+API маршруты обрабатывают все взаимодействия с базой данных и внешними API:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- `/api/employees` - Управление сотрудниками (получение списка, данных конкретного сотрудника, создание)
+- `/api/test-sessions` - Управление тестовыми сессиями (создание, получение, завершение)
+- `/api/chat` - Обработка сообщений чата (отправка сообщений и получение ответов)
+- `/api/candidate-form` - Управление анкетами кандидатов (сохранение и получение)
+- `/api/test-results` - Управление результатами тестов (получение и сохранение)
+- `/api/profile` - Получение полных данных профиля сотрудника
+- `/api/grok` - Взаимодействие с API Grok для генерации ответов и анализа диалогов
 
-This project uses [`next/font`](https:
+### Принципы архитектуры
+
+1. **Разделение ответственности**:
+   - Клиентские компоненты отвечают только за отображение данных и обработку пользовательского ввода
+   - Серверные компоненты и API маршруты обрабатывают бизнес-логику и доступ к данным
+
+2. **Улучшенная безопасность**:
+   - Прямые обращения к базе данных происходят только на сервере
+   - Клиентский код не имеет прямого доступа к базе данных
+
+3. **Улучшенная производительность**:
+   - Серверные компоненты получают предварительно загруженные данные
+   - Меньше запросов на стороне клиента
+
+### Клиентские сервисы
+
+API-клиент (`src/services/api.ts`) предоставляет интерфейс для взаимодействия с серверными API:
+
+- `employeeService` - Для работы с сотрудниками
+- `testSessionService` - Для работы с тестовыми сессиями
+- `chatService` - Для обмена сообщениями
+- `candidateFormService` - Для работы с анкетами
+- `testResultService` - Для работы с результатами тестов
+- `grokService` - Для взаимодействия с Grok
+
+### Серверные компоненты
+
+- `EmployeeProfile` - Отображение профиля сотрудника с использованием серверных данных
+- `TestInfo` - Информация о тестовой сессии и управление статусом
+- `Dashboard` - Страница дашборда с общей статистикой и данными
+- `TestResults` - Страница с результатами теста
+
+## Запуск приложения
+
+1. Установите зависимости:
+   ```
+   npm install
+   ```
+
+2. Запустите приложение в режиме разработки:
+   ```
+   npm run dev
+   ```
+
+3. Откройте [http://localhost:3000](http://localhost:3000) в браузере.
+
+## Структура проекта
+
+- `app/` - Директория приложения Next.js App Router
+  - `api/` - API маршруты
+  - `components/` - Серверные компоненты
+  - `[...routes]/` - Страницы приложения
+- `src/`
+  - `components/` - Клиентские компоненты
+  - `lib/` - Утилиты для работы с базой данных
+  - `services/` - Сервисы для работы с API
+  - `data/` - Статические данные приложения
 
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:
 
-- [Next.js Documentation](https:
-- [Learn Next.js](https:
-
-You can check out [the Next.js GitHub repository](https:
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https:
-
-Check out our [Next.js deployment documentation](https:
+- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
+- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial. 

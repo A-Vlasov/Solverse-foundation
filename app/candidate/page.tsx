@@ -1,9 +1,12 @@
 'use client';
 
-import CandidateForm from '@/modules/candidate-form/components/organisms/CandidateForm';
+import CandidateForm from '../../src/components/CandidateForm';
+import { LocaleProvider } from '../../src/contexts/LocaleContext';
 
 export default function CandidatePage() {
   return (
-    <CandidateForm />
+    <LocaleProvider>
+      <CandidateForm />
+    </LocaleProvider>
   );
 } 

@@ -1,0 +1,111 @@
+import React, { useState, useRef, useEffect } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { ChevronLeft, User, LogOut, ChevronDown, UserPlus } from 'lucide-react';
+import useAuth from '../hooks/useAuth';
+import LocaleSwitcher from './LocaleSwitcher';
+
+export default function Header() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { logout } = useAuth();
+  const [showDropdown, setShowDropdown] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  
+  // Закрываем выпадающее меню при клике вне его
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowDropdown(false);
+      }
+    }
+    
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+  
+  // Функция для выхода из системы
+  const handleLogout = () => {
+    // Удаляем данные об авторизации из localStorage
+    localStorage.removeItem('isAdmin');
+    localStorage.removeItem('isLoggedIn');
+    localStorage.removeItem('userRole');
+    localStorage.removeItem('userId');
+    
+    // Вызываем функцию logout из хука useAuth
+    logout();
+    
+    // Перенаправляем на страницу входа
+    navigate('/login');
+  };
+  
+  // Не показываем хедер на страницах входа и чата
+  if (
+    location.pathname === '/login' || 
+    location.pathname.includes('/test-session/') ||
+    location.pathname.includes('/test-results/') || 
+    location.pathname.includes('/admin/session/')
+  ) {
+    return null;
+  }
+  
+  // Проверяем, авторизован ли пользователь как администратор
+  const isAdmin = localStorage.getItem('isAdmin') === 'true';
+
+  return (
+    <header className="bg-[#1a1a1a] border-b border-[#3d3d3d] p-4">
+      <div className="container mx-auto flex items-center justify-between">
+        <Link 
+          to={isAdmin ? "/admin" : "/"}
+          className="text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-purple-500"
+        >
+          OnlyFans Test System
+        </Link>
+        
+        <div className="flex items-center gap-4">
+          <LocaleSwitcher />
+          
+          {isAdmin && (
+            <div className="relative" ref={dropdownRef}>
+              <button 
+                onClick={() => setShowDropdown(!showDropdown)}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#2d2d2d] hover:bg-[#3d3d3d] transition-colors text-gray-300"
+              >
+                <User className="w-4 h-4 text-pink-500" />
+                <span>Администратор</span>
+                <ChevronDown className={`w-4 h-4 transition-transform ${showDropdown ? 'rotate-180' : ''}`} />
+              </button>
+              
+              {showDropdown && (
+                <div className="absolute right-0 mt-2 w-64 bg-[#2d2d2d] rounded-lg border border-[#3d3d3d] shadow-xl z-10">
+                  <div className="p-2">
+                    <Link 
+                      to="/admin/register-admin"
+                      className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-[#3d3d3d] transition-colors text-gray-300 w-full text-left"
+                      onClick={() => setShowDropdown(false)}
+                    >
+                      <UserPlus className="w-4 h-4" />
+                      <span>Регистрация администратора</span>
+                    </Link>
+                    
+                    <button
+                      onClick={() => {
+                        setShowDropdown(false);
+                        handleLogout();
+                      }}
+                      className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-[#3d3d3d] transition-colors text-gray-300 w-full text-left mt-1"
+                    >
+                      <LogOut className="w-4 h-4" />
+                      <span>Выход</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </header>
+  );
+} 

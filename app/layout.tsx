@@ -1,37 +1,29 @@
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import "./globals.css";
-import { AuthProvider } from '@/modules/auth/lib/AuthContext';
+import './globals.css';
+import { Metadata } from 'next';
+import dynamic from 'next/dynamic';
 
-const geistSans = Geist({
-  subsets: ["latin"],
-  variable: "--font-geist-sans",
-});
-
-const geistMono = Geist_Mono({
-  subsets: ["latin"],
-  variable: "--font-geist-mono",
+// Динамически импортируем компоненты, которые используют клиентский код
+const ClientProvider = dynamic(() => import('./providers/ClientProvider'), {
+  ssr: false,
 });
 
 export const metadata: Metadata = {
-  title: "Внутренний портал",
-  description: "Внутренний портал для сотрудников",
+  title: 'OnlyFans',
+  description: 'OnlyFans application',
 };
 
 export default function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode;
-}>) {
+}) {
   return (
-    <html lang="ru">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        <AuthProvider>
+    <html lang="en">
+      <body>
+        <ClientProvider>
           {children}
-        </AuthProvider>
+        </ClientProvider>
       </body>
     </html>
   );
-}
+} 
