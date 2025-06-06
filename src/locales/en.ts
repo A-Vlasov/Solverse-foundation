@@ -12,7 +12,7 @@ export const en = {
   away: 'Away',
   typing: 'typing...',
   you: 'You',
-  
+
   // Chat interface
   enterMessage: 'Enter message...',
   addPhotoComment: 'Add a comment to photo...',
@@ -22,27 +22,27 @@ export const en = {
   photoComment: 'Photo Comment',
   bought: 'Bought',
   notBought: 'Not Bought',
-  
+
   // Chat descriptions
   passionateClient: 'Passionate client',
   capriciousClient: 'Capricious client',
   bargainingClient: 'Bargaining about price',
   testingBoundaries: 'Testing boundaries',
-  
+
   // Errors
   errorSendingMessage: 'An error occurred while sending the message. Please try again.',
   errorSendingPhoto: 'An error occurred while sending the photo. Please try again.',
   sessionNotFound: 'Test session not found. Please reload the page.',
-  
+
   // Chat
   chat: {
     timeExpired: 'Time expired. Message sending is disabled.'
   },
-  
+
   // Dialogs
   selectPhotoPrice: 'Select Photo Price',
   confirmSendPhoto: 'Send Photo',
-  
+
   // Test completion
   congratulations: 'Congratulations!',
   testCompletedSuccessfully: 'You have successfully completed the communication skills test.',
@@ -50,11 +50,11 @@ export const en = {
   itWillTakeSeconds: 'This will take a few seconds',
   redirecting: 'Redirecting...',
   pleaseWait: 'Please wait',
-  
+
   // Test completed page
   testCompletedTitle: 'Test Completed',
   testCompletedMessage: 'Thank you for completing the test! Your responses have been recorded.',
-  
+
   // Test Information
   testInfoTitle: 'Test Information',
   testInfoGreeting: 'Hello',
@@ -71,10 +71,10 @@ export const en = {
   testInfoRule3: '3. Answer the questions independently and honestly',
   testInfoRule4: '4. Contact the administrator if you encounter technical issues',
   testInfoStartTest: 'Start Test',
-  
+
   // Loading
   loading: 'Loading data...',
-  
+
   // Error
   errorTitle: 'Loading Error',
   errorReturnForm: 'Return to form',

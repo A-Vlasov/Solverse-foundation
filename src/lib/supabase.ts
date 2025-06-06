@@ -339,7 +339,7 @@ export async function createTestSession(
 ): Promise<TestSession> {
   try {
     console.log('🔄 Creating test session:', { employeeId });
-    
+
     // Проверяем, существуют ли уже активные сессии для этого сотрудника
     const { data: existingSessions, error: checkError } = await supabase
       .from('test_sessions')
@@ -348,117 +348,158 @@ export async function createTestSession(
       .eq('completed', false)
       .order('created_at', { ascending: false })
       .limit(1);
-    
+
     if (checkError) {
       console.error('❌ Error checking existing sessions:', checkError);
     } else if (existingSessions && existingSessions.length > 0) {
       console.log('🔍 Found existing active session for employee:', existingSessions[0]);
-      
+
+      // Получаем ID существующей сессии
+      const existingSessionId = existingSessions[0].id;
+
       // Проверяем, существуют ли чаты для этой сессии
       const { data: existingChats, error: chatError } = await supabase
         .from('chats')
         .select('*')
-        .eq('test_session_id', existingSessions[0].id)
-        .order('chat_number');
-      
-      if (!chatError && existingChats && existingChats.length === 4) {
-        console.log('✅ Using existing session with all 4 chats:', 
-          existingChats.map(c => ({ id: c.id, chatNumber: c.chat_number })));
-        
-        // Помечаем токен как использованный при начале теста
-        try {
-          const { data: tokenData } = await supabase
-            .from('candidate_tokens')
-            .select('token')
-            .eq('employee_id', employeeId)
-            .eq('is_used', false)
-            .order('created_at', { ascending: false })
-            .limit(1);
+        .eq('test_session_id', existingSessionId);
+
+      if (chatError) {
+        console.error('❌ Error fetching chats for existing session:', chatError);
+      } else if (existingChats) {
+        console.log(`🔍 Found ${existingChats.length} chats for existing session`);
+
+        // Получаем уникальные номера чатов
+        const uniqueChatNumbers = Array.from(
+          new Set(existingChats.map(c => c.chat_number as number))
+        );
+        console.log('🔢 Unique chat numbers:', uniqueChatNumbers);
+
+        // Если уже есть 4 чата с разными номерами 1-4, используем существующую сессию
+        if (uniqueChatNumbers.length === 4 && 
+            [1, 2, 3, 4].every(num => uniqueChatNumbers.includes(num))) {
+          console.log('✅ All 4 required chats exist, using existing session');
+          
+          // Если есть дубликаты чатов с одинаковым номером, удаляем их
+          if (existingChats.length > 4) {
+            console.log('⚠️ Found duplicate chats, cleaning up...');
             
-          if (tokenData && tokenData.length > 0) {
-            await markTokenAsUsed(tokenData[0].token);
-          }
-        } catch (tokenError) {
-          console.warn('⚠️ Error marking token as used:', tokenError);
-          // Продолжаем даже при ошибке с токеном
-        }
-        
-        return {
-          ...existingSessions[0],
-          chats: existingChats
-        };
-      } else if (!chatError && existingChats && existingChats.length > 0) {
-        console.warn('⚠️ Found session with incomplete chats:', existingChats.length);
-        console.log('➕ Creating missing chats...');
-        
-        // Находим, каких чатов не хватает
-        const existingChatNumbers = existingChats.map(c => c.chat_number);
-        const missingChatNumbers = [1, 2, 3, 4].filter(num => !existingChatNumbers.includes(num));
-        
-        if (missingChatNumbers.length > 0) {
-          console.log('🔍 Missing chat numbers:', missingChatNumbers);
-          
-          // Создаем недостающие чаты
-          const additionalChatResults = await Promise.all(missingChatNumbers.map(chatNumber => 
-            supabase
-              .from('chats')
-              .insert([{
-                test_session_id: existingSessions[0].id,
-                chat_number: chatNumber,
-                messages: []
-              }])
-              .select()
-              .single()
-          ));
-          
-          const allChats = [...existingChats];
-          let additionalChatsCreated = true;
-          
-          // Проверяем, что все дополнительные чаты созданы успешно
-          for (let i = 0; i < additionalChatResults.length; i++) {
-            const { data, error } = additionalChatResults[i];
-            if (error) {
-              console.error(`❌ Error creating missing chat ${missingChatNumbers[i]}:`, error);
-              additionalChatsCreated = false;
-            } else {
-              console.log(`✅ Missing chat ${missingChatNumbers[i]} created successfully`);
-              allChats.push(data);
-            }
-          }
-          
-          if (additionalChatsCreated) {
-            console.log('✅ All missing chats created, using existing session with complete chats');
-            
-            // Помечаем токен как использованный при начале теста
-            try {
-              const { data: tokenData } = await supabase
-                .from('candidate_tokens')
-                .select('token')
-                .eq('employee_id', employeeId)
-                .eq('is_used', false)
-                .order('created_at', { ascending: false })
-                .limit(1);
-                
-              if (tokenData && tokenData.length > 0) {
-                await markTokenAsUsed(tokenData[0].token);
+            // Группируем чаты по номерам
+            const chatsByNumber: Record<number, any[]> = {};
+            existingChats.forEach(chat => {
+              const chatNumber = chat.chat_number as number;
+              if (!chatsByNumber[chatNumber]) {
+                chatsByNumber[chatNumber] = [];
               }
-            } catch (tokenError) {
-              console.warn('⚠️ Error marking token as used:', tokenError);
-              // Продолжаем даже при ошибке с токеном
+              chatsByNumber[chatNumber].push(chat);
+            });
+            
+            // Удаляем лишние чаты (оставляем только последний)
+            for (const [chatNumberStr, chats] of Object.entries(chatsByNumber)) {
+              const chatNumber = parseInt(chatNumberStr, 10);
+              if (chats.length > 1) {
+                // Сортируем чаты по ID (считаем, что ID содержит timestamp)
+                chats.sort((a, b) => a.id.localeCompare(b.id));
+                
+                // Оставляем самый последний чат (с самым большим ID)
+                const chatsToDelete = chats.slice(0, chats.length - 1);
+                
+                for (const chatToDelete of chatsToDelete) {
+                  console.log(`🗑️ Deleting duplicate chat: ${chatToDelete.id} for chat_number: ${chatNumber}`);
+                  const { error: deleteError } = await supabase
+                    .from('chats')
+                    .delete()
+                    .eq('id', chatToDelete.id);
+                  
+                  if (deleteError) {
+                    console.error(`❌ Error deleting duplicate chat ${chatToDelete.id}:`, deleteError);
+                  }
+                }
+              }
             }
             
+            // Получаем обновленный список чатов после удаления дубликатов
+            const { data: updatedChats, error: refetchError } = await supabase
+              .from('chats')
+              .select('*')
+              .eq('test_session_id', existingSessionId);
+            
+            if (refetchError) {
+              console.error('❌ Error refetching chats after cleanup:', refetchError);
+            } else if (updatedChats) {
+              console.log(`✅ After cleanup: ${updatedChats.length} chats remain`);
+              
+              // Проверяем, что остались все 4 необходимых чата
+              const remainingChatNumbers = Array.from(
+                new Set(updatedChats.map(c => c.chat_number as number))
+              );
+              
+              if (remainingChatNumbers.length === 4 && 
+                  [1, 2, 3, 4].every(num => remainingChatNumbers.includes(num))) {
+                console.log('✅ All 4 chats successfully cleaned up, using existing session');
+                return {
+                  ...existingSessions[0],
+                  chats: updatedChats
+                };
+              } else {
+                console.warn('⚠️ Some required chats are missing after cleanup, will create new ones');
+              }
+            }
+          } else {
+            // Возвращаем существующую сессию с 4 чатами
             return {
               ...existingSessions[0],
-              chats: allChats
+              chats: existingChats
             };
           }
         }
+
+        // Если нет всех 4 чатов или есть проблемы с дубликатами, удаляем все чаты и создаем заново
+        console.log('🗑️ Cleaning up existing chats before creating new ones...');
+        const { error: deleteError } = await supabase
+          .from('chats')
+          .delete()
+          .eq('test_session_id', existingSessionId);
+
+        if (deleteError) {
+          console.error('❌ Error deleting existing chats:', deleteError);
+        } else {
+          console.log('✅ Successfully deleted all existing chats');
+        }
       }
+
+      // Создаем 4 чата для существующей сессии
+      console.log('🔄 Creating 4 chats for session:', existingSessionId);
       
-      console.log('⚠️ Existing session has incomplete chats, proceeding to create new session');
+      const chatInserts = [1, 2, 3, 4].map(chatNumber => ({
+        test_session_id: existingSessionId,
+        chat_number: chatNumber,
+        messages: []
+      }));
+
+      const { data: createdChats, error: insertError } = await supabase
+        .from('chats')
+        .upsert(chatInserts, { 
+          onConflict: 'test_session_id,chat_number',
+          ignoreDuplicates: true 
+        })
+        .select();
+
+      if (insertError) {
+        console.error('❌ Error creating chats:', insertError);
+      } else if (createdChats) {
+        console.log(`✅ Successfully created ${createdChats.length} chats for new session`);
+        
+        return {
+          ...existingSessions[0],
+          chats: createdChats
+        };
+      }
+
+      // Даже если произошла ошибка при создании чатов, возвращаем существующую сессию
+      return existingSessions[0];
     }
-    
-    // Создаем тестовую сессию
+
+    // Если нет активной сессии или возникла ошибка, создаем новую сессию
     const { data: session, error: sessionError } = await supabase
       .from('test_sessions')
       .insert([{
@@ -474,184 +515,38 @@ export async function createTestSession(
       throw sessionError || new Error('No data returned from test session creation');
     }
 
-    console.log('✅ Test session created:', { 
-      id: session.id, 
-      employeeId: session.employee_id 
+    console.log('✅ Test session created:', {
+      id: session.id,
+      employeeId: session.employee_id
     });
 
-    // Создаем 4 пустых чата для сессии
+    // Создаем 4 чата для новой сессии
     console.log('🔄 Creating 4 chats for session:', session.id);
     
-    const chatResults = await Promise.all([1, 2, 3, 4].map(chatNumber => 
-      supabase
-        .from('chats')
-        .insert([{
-          test_session_id: session.id,
-          chat_number: chatNumber,
-          messages: []
-        }])
-        .select()
-        .single()
-    ));
+    const chatInserts = [1, 2, 3, 4].map(chatNumber => ({
+      test_session_id: session.id,
+      chat_number: chatNumber,
+      messages: []
+    }));
 
-    // Проверяем, что все чаты созданы успешно
-    const chatErrors = [];
-    const createdChats = [];
-    
-    for (let i = 0; i < chatResults.length; i++) {
-      const { data, error } = chatResults[i];
-      if (error) {
-        console.error(`❌ Error creating chat ${i+1}:`, error);
-        chatErrors.push({ chatNumber: i+1, error: error.message });
-      } else {
-        console.log(`✅ Chat ${i+1} created successfully:`, { 
-          id: data.id, 
-          test_session_id: data.test_session_id,
-          chat_number: data.chat_number
-        });
-        createdChats.push(data);
-      }
-    }
-    
-    if (chatErrors.length > 0) {
-      console.error('❌ Failed to create all chats:', chatErrors);
-      
-      // Если хоть какие-то чаты созданы, продолжаем с ними
-      if (createdChats.length > 0) {
-        console.warn(`⚠️ Continuing with ${createdChats.length} created chats instead of 4`);
-      } else {
-        throw new Error('Failed to create any chats for test session');
-      }
-    }
-
-    // Повторно получаем созданные чаты для большей надежности
-    const { data: chats, error: chatsError } = await supabase
+    const { data: createdChats, error: insertError } = await supabase
       .from('chats')
-      .select('*')
-      .eq('test_session_id', session.id)
-      .order('chat_number');
+      .insert(chatInserts)
+      .select();
 
-    if (chatsError) {
-      console.error('❌ Error fetching created chats:', chatsError);
-      // Используем те чаты, которые мы уже создали
-      if (createdChats.length > 0) {
-        console.warn('⚠️ Using directly created chats instead of fetched ones');
-        
-        // Помечаем токен как использованный при начале теста
-        try {
-          const { data: tokenData } = await supabase
-            .from('candidate_tokens')
-            .select('token')
-            .eq('employee_id', employeeId)
-            .eq('is_used', false)
-            .order('created_at', { ascending: false })
-            .limit(1);
-            
-          if (tokenData && tokenData.length > 0) {
-            await markTokenAsUsed(tokenData[0].token);
-          }
-        } catch (tokenError) {
-          console.warn('⚠️ Error marking token as used:', tokenError);
-        }
-        
-        return {
-          ...session,
-          chats: createdChats
-        };
-      }
-      throw new Error('Failed to fetch created chats');
-    }
-
-    // Проверяем, что у нас есть все 4 чата
-    if (!chats || chats.length < 4) {
-      console.warn(`⚠️ Only ${chats?.length || 0} chats found instead of 4, attempting repair`);
+    if (insertError) {
+      console.error('❌ Error creating chats:', insertError);
+    } else if (createdChats) {
+      console.log(`✅ Successfully created ${createdChats.length} chats for new session`);
       
-      // Находим, каких чатов не хватает
-      const existingChatNumbers = chats?.map(c => c.chat_number) || [];
-      const missingChatNumbers = [1, 2, 3, 4].filter(num => !existingChatNumbers.includes(num));
-      
-      // Создаем недостающие чаты
-      if (missingChatNumbers.length > 0) {
-        console.log('➕ Creating missing chat numbers:', missingChatNumbers);
-        
-        const repairResults = await Promise.all(missingChatNumbers.map(chatNumber => 
-          supabase
-            .from('chats')
-            .insert([{
-              test_session_id: session.id,
-              chat_number: chatNumber,
-              messages: []
-            }])
-            .select()
-            .single()
-        ));
-        
-        // Добавляем восстановленные чаты к существующим
-        const repairedChats = [...(chats || [])];
-        for (const { data, error } of repairResults) {
-          if (!error && data) {
-            repairedChats.push(data);
-            console.log(`✅ Successfully repaired missing chat ${data.chat_number}`);
-          }
-        }
-        
-        // Используем восстановленные чаты
-        if (repairedChats.length > (chats?.length || 0)) {
-          console.log('✅ Chat repair successful, now have', repairedChats.length, 'chats');
-          
-          // Помечаем токен как использованный при начале теста
-          try {
-            const { data: tokenData } = await supabase
-              .from('candidate_tokens')
-              .select('token')
-              .eq('employee_id', employeeId)
-              .eq('is_used', false)
-              .order('created_at', { ascending: false })
-              .limit(1);
-              
-            if (tokenData && tokenData.length > 0) {
-              await markTokenAsUsed(tokenData[0].token);
-            }
-          } catch (tokenError) {
-            console.warn('⚠️ Error marking token as used:', tokenError);
-          }
-          
-          return {
-            ...session,
-            chats: repairedChats
-          };
-        }
-      }
+      return {
+        ...session,
+        chats: createdChats
+      };
     }
 
-    console.log('✅ All chats created and fetched successfully:', {
-      sessionId: session.id,
-      employeeId: session.employee_id,
-      chatCount: chats ? chats.length : 0,
-      chatNumbers: chats ? chats.map(c => c.chat_number) : []
-    });
-    
-    // Помечаем токен как использованный при начале теста
-    try {
-      const { data: tokenData } = await supabase
-        .from('candidate_tokens')
-        .select('token')
-        .eq('employee_id', employeeId)
-        .eq('is_used', false)
-        .order('created_at', { ascending: false })
-        .limit(1);
-        
-      if (tokenData && tokenData.length > 0) {
-        await markTokenAsUsed(tokenData[0].token);
-      }
-    } catch (tokenError) {
-      console.warn('⚠️ Error marking token as used:', tokenError);
-    }
-    
-    return {
-      ...session,
-      chats: chats || []
-    };
+    // Возвращаем сессию даже если не удалось создать чаты
+    return session;
   } catch (error) {
     console.error('❌ Error in createTestSession:', error);
     throw error;
@@ -659,12 +554,12 @@ export async function createTestSession(
 }
 
 export async function updateTestSession(
-  sessionId: string, 
+  sessionId: string,
   updates: Partial<TestSession>
 ): Promise<TestSession> {
   try {
     console.log('Updating test session:', { sessionId, updates });
-    
+
     const { data, error } = await supabase
       .from('test_sessions')
       .update({
@@ -692,46 +587,46 @@ export async function completeTestSession(
 ): Promise<TestSession> {
   try {
     console.log('🔄 Completing test session:', { sessionId });
-    
+
     // Проверим существование сессии перед обновлением
     const { data: existingSession, error: checkError } = await supabase
       .from('test_sessions')
       .select('*')
       .eq('id', sessionId)
       .single();
-      
+
     if (checkError) {
       console.error('❌ Error checking session existence:', checkError);
       throw new Error(`Failed to find session: ${checkError.message}`);
     }
-    
+
     if (!existingSession) {
       console.error('❌ Session not found:', sessionId);
       throw new Error('Session not found');
     }
-    
-    console.log('✓ Found session to complete:', { 
-      id: existingSession.id, 
+
+    console.log('✓ Found session to complete:', {
+      id: existingSession.id,
       completed: existingSession.completed,
       employee_id: existingSession.employee_id
     });
-    
+
     // Если сессия уже завершена, просто возвращаем её
     if (existingSession.completed) {
       console.log('ℹ️ Session already completed:', existingSession);
       return existingSession;
     }
-    
+
     // Кэшируем историю чатов перед завершением
     try {
       const { data: chats, error: chatError } = await supabase
         .from('chats')
         .select('*')
         .eq('test_session_id', sessionId);
-        
+
       if (!chatError && chats && chats.length > 0) {
         console.log(`Кэширование ${chats.length} чатов перед завершением сессии`);
-        
+
         // Сохраняем в sessionStorage для надежности
         if (typeof sessionStorage !== 'undefined') {
           sessionStorage.setItem(`chat_history_${sessionId}`, JSON.stringify({
@@ -744,7 +639,7 @@ export async function completeTestSession(
       console.warn('⚠️ Ошибка при кэшировании чатов:', cacheError);
       // Продолжаем завершение даже при ошибке кэширования
     }
-    
+
     const { data, error } = await supabase
       .from('test_sessions')
       .update({
@@ -767,10 +662,10 @@ export async function completeTestSession(
     }
 
     console.log('✅ Test session completed successfully:', data);
-    
+
     // Проверяем, доступен ли localStorage (только на клиенте)
     const isLocalStorageAvailable = typeof window !== 'undefined' && window.localStorage;
-    
+
     // Обновление кэша в localStorage для немедленного отражения изменений, если он доступен
     if (isLocalStorageAvailable) {
       try {
@@ -785,7 +680,7 @@ export async function completeTestSession(
         // Игнорируем ошибку кэширования, это некритично
       }
     }
-    
+
     return data;
   } catch (error) {
     console.error('❌ Error in completeTestSession:', error);
@@ -796,20 +691,20 @@ export async function completeTestSession(
 export async function getRecentTestSessions(limit: number = 20): Promise<TestSession[]> {
   try {
     console.log('Supabase: Запрос недавних тестовых сессий, лимит:', limit);
-    
+
     // Проверяем, доступен ли localStorage (только на клиенте)
     const isLocalStorageAvailable = typeof window !== 'undefined' && window.localStorage;
-    
+
     // Сначала проверим кэш в localStorage, если он доступен
     if (isLocalStorageAvailable) {
       try {
         const cacheKey = 'recent_test_sessions';
         const cachedData = localStorage.getItem(cacheKey);
-        
+
         if (cachedData) {
           const { sessions, timestamp } = JSON.parse(cachedData);
           const cacheAge = Date.now() - new Date(timestamp).getTime();
-          
+
           // Если кэш не старше 5 секунд (5000 мс), используем его
           if (cacheAge < 5000 && Array.isArray(sessions) && sessions.length > 0) {
             console.log('Supabase: Используем кэшированные сессии, возраст:', Math.round(cacheAge / 1000), 'секунд');
@@ -821,7 +716,7 @@ export async function getRecentTestSessions(limit: number = 20): Promise<TestSes
         // Продолжаем без использования кэша
       }
     }
-    
+
     const { data, error } = await supabase
       .from('test_sessions')
       .select(`
@@ -851,7 +746,7 @@ export async function getRecentTestSessions(limit: number = 20): Promise<TestSes
     }
 
     console.log('Supabase: Получены необработанные данные сессий:', data.length);
-    
+
     // Проверяем каждую сессию на корректность данных
     const validSessions = data.filter(session => {
       if (!session.id || !session.employee_id) {
@@ -860,25 +755,25 @@ export async function getRecentTestSessions(limit: number = 20): Promise<TestSes
       }
       return true;
     });
-    
+
     // Группируем сессии по employee_id - для каждого сотрудника берем самую последнюю сессию
     const latestSessionByEmployee: { [key: string]: TestSession } = {};
-    
+
     validSessions.forEach(session => {
       const employeeId = session.employee_id;
-      
+
       // Проверяем, правильно ли установлен флаг completed
       // Если есть end_time, но completed = false, корректируем это
       if (session.end_time && !session.completed) {
         console.warn('⚠️ Session has end_time but completed=false, fixing:', session.id);
         session.completed = true;
       }
-      
+
       // Если у нас уже есть сессия для этого сотрудника, берем более новую
       if (latestSessionByEmployee[employeeId]) {
         const existingDate = new Date(latestSessionByEmployee[employeeId].created_at).getTime();
         const currentDate = new Date(session.created_at).getTime();
-        
+
         if (currentDate > existingDate) {
           latestSessionByEmployee[employeeId] = session;
         }
@@ -886,13 +781,13 @@ export async function getRecentTestSessions(limit: number = 20): Promise<TestSes
         latestSessionByEmployee[employeeId] = session;
       }
     });
-    
+
     // Преобразуем объект обратно в массив и сортируем по времени создания (от новых к старым)
     const uniqueSessions = Object.values(latestSessionByEmployee)
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-    
+
     console.log('Supabase: Отфильтровано сессий:', uniqueSessions.length);
-    
+
     // Кэшируем результат в localStorage, если он доступен
     if (isLocalStorageAvailable) {
       try {
@@ -907,7 +802,7 @@ export async function getRecentTestSessions(limit: number = 20): Promise<TestSes
         // Игнорируем ошибку кэширования
       }
     }
-    
+
     return uniqueSessions;
   } catch (error) {
     console.error('Supabase: Необработанная ошибка в getRecentTestSessions:', error);
@@ -921,28 +816,28 @@ export async function getEmployeeTestSessions(employeeId: string): Promise<TestS
     console.error('[getEmployeeTestSessions] Ошибка: Пустой ID сотрудника');
     return [];
   }
-  
+
   console.log('[getEmployeeTestSessions] Запрос сессий для сотрудника:', employeeId);
-  
+
   try {
     const { data, error } = await supabase
       .from('test_sessions')
       .select('*, employee:employees(*)')
       .eq('employee_id', employeeId)
       .order('created_at', { ascending: false });
-      
+
     if (error) {
       console.error('[getEmployeeTestSessions] Ошибка при получении сессий:', error);
       throw error;
     }
-    
+
     if (!data || data.length === 0) {
       console.log('[getEmployeeTestSessions] Сессии не найдены для сотрудника:', employeeId);
       return [];
     }
-    
+
     console.log('[getEmployeeTestSessions] Успешно получено сессий:', data.length);
-    
+
     return data;
   } catch (error) {
     console.error('[getEmployeeTestSessions] Критическая ошибка:', error);
@@ -962,8 +857,8 @@ export async function addMessageToTestSession(
     try {
       const sessionData = await getTestSession(sessionId);
       if (sessionData) {
-        console.log('Found session for message:', { 
-          sessionId, 
+        console.log('Found session for message:', {
+          sessionId,
           employeeId: sessionData.employee_id,
           completed: sessionData.completed
         });
@@ -974,7 +869,7 @@ export async function addMessageToTestSession(
       console.error('Session validation error:', sessionError);
       // Продолжаем выполнение, так как ошибка может быть только в логировании
     }
-    
+
     // Получаем чат напрямую через single()
     const { data: chat, error: fetchError } = await supabase
       .from('chats')
@@ -990,19 +885,19 @@ export async function addMessageToTestSession(
 
     if (!chat) {
       console.error('Chat not found for session:', sessionId, 'and number:', chatNumber);
-      
+
       // Дополнительная проверка существования чатов для сессии
       const { data: existingChats, error: chatsError } = await supabase
         .from('chats')
         .select('id, chat_number')
         .eq('test_session_id', sessionId);
-        
+
       if (chatsError) {
         console.error('Error checking existing chats:', chatsError);
       } else {
         console.log('Existing chats for session:', existingChats);
       }
-      
+
       throw new Error('Chat not found');
     }
 
@@ -1011,7 +906,7 @@ export async function addMessageToTestSession(
     // Преобразуем существующие сообщения из JSONB
     const existingMessages = chat.messages || [];
     const updatedMessages = [...existingMessages, message];
-    
+
     // Кэшируем сообщения локально перед сохранением в базу
     // Это обеспечит защиту от потери данных при ошибке обновления
     if (typeof sessionStorage !== 'undefined') {
@@ -1026,11 +921,11 @@ export async function addMessageToTestSession(
           chat_number: chatNumber
         }));
         console.log('Cached updated messages to sessionStorage');
-        
+
         // Дополнительно сохраняем в общий кэш истории чатов
         const historyKey = `chat_history_${sessionId}`;
         let existingHistory = null;
-        
+
         try {
           const rawHistory = sessionStorage.getItem(historyKey);
           if (rawHistory) {
@@ -1039,14 +934,14 @@ export async function addMessageToTestSession(
         } catch (e) {
           console.warn('Error parsing existing history cache:', e);
         }
-        
+
         // Получаем остальные чаты и обновляем один из них
         if (existingHistory && Array.isArray(existingHistory.chats)) {
           const updatedChats = [...existingHistory.chats];
-          const chatIndex = updatedChats.findIndex(c => 
+          const chatIndex = updatedChats.findIndex(c =>
             c.test_session_id === sessionId && c.chat_number === chatNumber
           );
-          
+
           if (chatIndex >= 0) {
             // Обновляем существующий чат
             updatedChats[chatIndex] = {
@@ -1065,7 +960,7 @@ export async function addMessageToTestSession(
               updated_at: new Date().toISOString()
             });
           }
-          
+
           // Сохраняем обновленную историю
           sessionStorage.setItem(historyKey, JSON.stringify({
             timestamp: new Date().toISOString(),
@@ -1092,7 +987,7 @@ export async function addMessageToTestSession(
 
     if (updateError) {
       console.error('Error updating chat:', updateError);
-      
+
       // В случае ошибки обновления создаем объект с локальными изменениями
       // для возврата пользователю, чтобы UI не терял добавленное сообщение
       const fallbackChat = {
@@ -1100,31 +995,31 @@ export async function addMessageToTestSession(
         messages: updatedMessages,
         updated_at: new Date().toISOString()
       };
-      
+
       console.log('Returning fallback chat with local changes');
       return fallbackChat;
     }
 
     if (!updatedChat) {
       console.error('No data returned after updating chat');
-      
+
       // Так же возвращаем локальные изменения при отсутствии данных
       const fallbackChat = {
         ...chat,
         messages: updatedMessages,
         updated_at: new Date().toISOString()
       };
-      
+
       console.log('Returning fallback chat with local changes due to empty response');
       return fallbackChat;
     }
 
-    console.log('Message added successfully:', { 
-      chatId: updatedChat.id, 
+    console.log('Message added successfully:', {
+      chatId: updatedChat.id,
       messageCount: updatedChat.messages.length,
       latestMessage: updatedChat.messages[updatedChat.messages.length - 1]
     });
-    
+
     // Принудительно запрашиваем и кэшируем всю историю чатов после успешного добавления сообщения
     // Это обеспечит синхронизацию базы данных и локального кэша
     try {
@@ -1132,7 +1027,7 @@ export async function addMessageToTestSession(
     } catch (e) {
       console.warn('Error triggering history update:', e);
     }
-    
+
     return updatedChat;
   } catch (error) {
     console.error('Error in addMessageToTestSession:', error);
@@ -1163,27 +1058,27 @@ export async function getTestSessionChats(sessionId: string): Promise<Chat[]> {
 export async function getChatHistory(sessionId: string): Promise<Chat[]> {
   try {
     console.log('Fetching chat history for session:', sessionId);
-    
+
     if (!sessionId) {
       console.error('Empty sessionId provided to getChatHistory');
       return [];
     }
-    
+
     const { data, error } = await supabase
       .from('chats')
       .select('*')
       .eq('test_session_id', sessionId)
       .order('chat_number', { ascending: true });
-      
+
     if (error) {
       console.error('Error fetching chat history:', error);
       throw error;
     }
-    
+
     // Проверяем полученные данные
     if (!data || data.length === 0 || data.some(chat => !chat.messages || chat.messages.length === 0)) {
       console.warn('Чаты не найдены в БД или некоторые чаты пусты, пробуем использовать кэш');
-      
+
       // Пытаемся восстановить из sessionStorage - общий кэш истории
       if (typeof sessionStorage !== 'undefined') {
         const cachedData = sessionStorage.getItem(`chat_history_${sessionId}`);
@@ -1192,7 +1087,7 @@ export async function getChatHistory(sessionId: string): Promise<Chat[]> {
             const parsed = JSON.parse(cachedData);
             if (parsed && parsed.chats && Array.isArray(parsed.chats) && parsed.chats.length > 0) {
               console.log(`Восстановлено ${parsed.chats.length} чатов из общего кэша sessionStorage`);
-              
+
               // Если у нас есть данные из БД, но некоторые чаты пусты, объединяем данные
               if (data && data.length > 0) {
                 // Создаем карту чатов из кэша для быстрого доступа
@@ -1202,7 +1097,7 @@ export async function getChatHistory(sessionId: string): Promise<Chat[]> {
                     cachedChatsMap.set(chat.chat_number, chat);
                   }
                 });
-                
+
                 // Для каждого чата из БД проверяем, есть ли у него сообщения
                 // Если нет, пытаемся восстановить из кэша
                 const mergedChats = data.map(dbChat => {
@@ -1215,35 +1110,35 @@ export async function getChatHistory(sessionId: string): Promise<Chat[]> {
                   }
                   return dbChat;
                 });
-                
+
                 return mergedChats;
               }
-              
+
               return parsed.chats as Chat[];
             }
           } catch (e) {
             console.warn('Ошибка при разборе кэшированных данных общего кэша:', e);
           }
         }
-        
+
         // Если общий кэш не найден, пытаемся восстановить из отдельных кэшей чатов
         try {
           const restoredChats: Chat[] = [];
           let hasRestoredAny = false;
-          
+
           // Проверяем кэш для каждого номера чата (1-4)
           for (let chatNum = 1; chatNum <= 4; chatNum++) {
             // Приводим к нужному типу
             const chatNumber = chatNum as 1 | 2 | 3 | 4;
             const chatCacheKey = `chat_${sessionId}_${chatNumber}`;
             const chatData = sessionStorage.getItem(chatCacheKey);
-            
+
             if (chatData) {
               try {
                 const parsedChat = JSON.parse(chatData);
                 if (parsedChat && parsedChat.messages && parsedChat.messages.length > 0) {
                   console.log(`Восстановлен чат #${chatNumber} из отдельного кэша`);
-                  
+
                   restoredChats.push({
                     id: parsedChat.id || `restored_${sessionId}_${chatNumber}`,
                     test_session_id: sessionId,
@@ -1252,7 +1147,7 @@ export async function getChatHistory(sessionId: string): Promise<Chat[]> {
                     created_at: parsedChat.timestamp || new Date().toISOString(),
                     updated_at: new Date().toISOString()
                   });
-                  
+
                   hasRestoredAny = true;
                 }
               } catch (parseError) {
@@ -1260,26 +1155,26 @@ export async function getChatHistory(sessionId: string): Promise<Chat[]> {
               }
             }
           }
-          
+
           if (hasRestoredAny) {
             console.log(`Восстановлено ${restoredChats.length} чатов из отдельных кэшей`);
-            
+
             // Сортируем по номеру чата
             restoredChats.sort((a, b) => a.chat_number - b.chat_number);
-            
+
             // Также обновляем общий кэш
             sessionStorage.setItem(`chat_history_${sessionId}`, JSON.stringify({
               timestamp: new Date().toISOString(),
               chats: restoredChats
             }));
-            
+
             return restoredChats;
           }
         } catch (e) {
           console.warn('Ошибка при восстановлении из отдельных кэшей:', e);
         }
       }
-      
+
       // Пытаемся восстановить из localStorage
       if (typeof localStorage !== 'undefined') {
         const cachedData = localStorage.getItem(`chat_history_${sessionId}`);
@@ -1295,9 +1190,9 @@ export async function getChatHistory(sessionId: string): Promise<Chat[]> {
           }
         }
       }
-      
+
       console.warn('История чатов не найдена ни в БД, ни в кэше');
-      
+
       // Не создаем заглушки, возвращаем пустой массив
       if (!data || data.length === 0) {
         console.log('История не восстановлена, возвращаем пустой массив');
@@ -1306,7 +1201,7 @@ export async function getChatHistory(sessionId: string): Promise<Chat[]> {
     } else {
       // Кэшируем полученные данные на случай, если они потом пропадут
       console.log(`Fetched ${data.length} chats for session:`, sessionId);
-      
+
       // Сохраняем в кэш, если мы на клиенте
       if (typeof sessionStorage !== 'undefined') {
         try {
@@ -1315,7 +1210,7 @@ export async function getChatHistory(sessionId: string): Promise<Chat[]> {
             timestamp: new Date().toISOString(),
             chats: data
           }));
-          
+
           // Также сохраняем каждый чат отдельно для надежности
           data.forEach(chat => {
             if (chat.chat_number) {
@@ -1329,18 +1224,18 @@ export async function getChatHistory(sessionId: string): Promise<Chat[]> {
               }));
             }
           });
-          
+
           console.log('Все чаты успешно кэшированы');
         } catch (e) {
           console.warn('Ошибка при кэшировании чатов:', e);
         }
       }
     }
-    
+
     return data || [];
   } catch (error) {
     console.error('Error in getChatHistory:', error);
-    
+
     // В случае ошибки проверяем кэш
     if (typeof sessionStorage !== 'undefined') {
       const cachedData = sessionStorage.getItem(`chat_history_${sessionId}`);
@@ -1355,23 +1250,23 @@ export async function getChatHistory(sessionId: string): Promise<Chat[]> {
           console.warn('Ошибка при разборе кэшированных данных:', e);
         }
       }
-      
+
       // Пытаемся восстановить из отдельных кэшей в случае ошибки
       try {
         const restoredChats: Chat[] = [];
-        
+
         // Проверяем кэш для каждого номера чата (1-4)
         for (let chatNum = 1; chatNum <= 4; chatNum++) {
           const chatNumber = chatNum as 1 | 2 | 3 | 4;
           const chatCacheKey = `chat_${sessionId}_${chatNumber}`;
           const chatData = sessionStorage.getItem(chatCacheKey);
-          
+
           if (chatData) {
             try {
               const parsedChat = JSON.parse(chatData);
               if (parsedChat && parsedChat.messages && parsedChat.messages.length > 0) {
                 console.log(`Восстановлен чат #${chatNumber} из отдельного кэша после ошибки`);
-                
+
                 restoredChats.push({
                   id: parsedChat.id || `error_restored_${sessionId}_${chatNumber}`,
                   test_session_id: sessionId,
@@ -1386,10 +1281,10 @@ export async function getChatHistory(sessionId: string): Promise<Chat[]> {
             }
           }
         }
-        
+
         if (restoredChats.length > 0) {
           console.log(`Восстановлено ${restoredChats.length} чатов из отдельных кэшей после ошибки`);
-          
+
           // Сортируем по номеру чата
           restoredChats.sort((a, b) => a.chat_number - b.chat_number);
           return restoredChats;
@@ -1398,7 +1293,7 @@ export async function getChatHistory(sessionId: string): Promise<Chat[]> {
         console.warn('Ошибка при восстановлении из отдельных кэшей после ошибки:', e);
       }
     }
-    
+
     throw error;
   }
 }
@@ -1408,22 +1303,22 @@ export async function getTestSession(sessionId: string): Promise<TestSession | n
     console.error('[getTestSession] Ошибка: Пустой ID сессии');
     return null;
   }
-  
+
   // Проверка валидности UUID
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sessionId)) {
     console.error('[getTestSession] Ошибка: Невалидный формат UUID:', sessionId);
     return null;
   }
-  
+
   console.log('[getTestSession] Запрос сессии:', sessionId);
-  
+
   try {
     const { data, error } = await supabase
       .from('test_sessions')
       .select('*, employee:employees(*)')
       .eq('id', sessionId)
       .single();
-      
+
     if (error) {
       if (error.code === 'PGRST116') {
         console.log('[getTestSession] Сессия не найдена:', sessionId);
@@ -1432,16 +1327,16 @@ export async function getTestSession(sessionId: string): Promise<TestSession | n
       console.error('[getTestSession] Ошибка при получении сессии:', error);
       throw error;
     }
-    
+
     if (!data) {
       console.log('[getTestSession] Сессия не найдена (пустые данные):', sessionId);
       return null;
     }
-    
+
     console.log('[getTestSession] Сессия успешно получена:', data.id);
-    console.log('[getTestSession] Данные сотрудника:', data.employee ? 
+    console.log('[getTestSession] Данные сотрудника:', data.employee ?
       `ID=${data.employee.id}, имя=${data.employee.first_name}` : 'отсутствуют');
-    
+
     return data;
   } catch (error) {
     console.error('[getTestSession] Критическая ошибка:', error);
@@ -1455,26 +1350,26 @@ export async function getTestSession(sessionId: string): Promise<TestSession | n
 export async function completeAllEmployeeTestSessions(employeeId: string): Promise<void> {
   try {
     console.log('Completing all active test sessions for employee:', employeeId);
-    
+
     // Получаем все активные сессии для сотрудника
     const { data: activeSessions, error: fetchError } = await supabase
       .from('test_sessions')
       .select('id')
       .eq('employee_id', employeeId)
       .eq('completed', false);
-      
+
     if (fetchError) {
       console.error('Error fetching active sessions:', fetchError);
       throw fetchError;
     }
-    
+
     if (!activeSessions || activeSessions.length === 0) {
       console.log('No active sessions found for employee:', employeeId);
       return;
     }
-    
+
     console.log(`Found ${activeSessions.length} active sessions to complete`);
-    
+
     // Завершаем каждую сессию
     const currentTime = new Date().toISOString();
     const { error: updateError } = await supabase
@@ -1486,12 +1381,12 @@ export async function completeAllEmployeeTestSessions(employeeId: string): Promi
       })
       .eq('employee_id', employeeId)
       .eq('completed', false);
-      
+
     if (updateError) {
       console.error('Error completing sessions:', updateError);
       throw updateError;
     }
-    
+
     console.log(`Successfully completed ${activeSessions.length} sessions for employee:`, employeeId);
   } catch (error) {
     console.error('Error in completeAllEmployeeTestSessions:', error);
@@ -1506,37 +1401,37 @@ export async function completeAllEmployeeTestSessions(employeeId: string): Promi
 export async function saveTestResult(testResult: Omit<TestResult, 'id' | 'created_at' | 'updated_at'>): Promise<TestResult> {
   try {
     console.log('Сохранение результатов теста. Session ID:', testResult.test_session_id, 'Employee ID:', testResult.employee_id);
-    
+
     if (!testResult.test_session_id) {
       throw new Error('test_session_id не может быть пустым');
     }
-    
+
     if (!testResult.employee_id) {
       throw new Error('employee_id не может быть пустым');
     }
-    
+
     // Нормализуем ID для предотвращения ошибок из-за регистра или пробелов
     const normalizedSessionId = testResult.test_session_id.trim().toLowerCase();
     const normalizedEmployeeId = testResult.employee_id.trim().toLowerCase();
-    
+
     // Создаем нормализованный объект для сохранения
     const sanitizedTestResult = {
       ...testResult,
       test_session_id: normalizedSessionId,
       employee_id: normalizedEmployeeId
     };
-    
+
     // Используем rpc для выполнения операции в единой транзакции
     // Запрашиваем блокировку строки с этим test_session_id для предотвращения гонок данных
     const { data: existingResults, error: checkError } = await supabase.rpc('get_test_result_with_lock', {
       p_test_session_id: normalizedSessionId,
       p_employee_id: normalizedEmployeeId
     });
-    
+
     if (checkError) {
       // Если RPC недоступен, используем обычный запрос без транзакции
       console.warn('RPC не поддерживается, используем обычный запрос:', checkError);
-      
+
       // Получаем существующие результаты для этой сессии И сотрудника
       const { data: fallbackResults, error: fallbackError } = await supabase
         .from('test_results')
@@ -1544,19 +1439,19 @@ export async function saveTestResult(testResult: Omit<TestResult, 'id' | 'create
         .eq('test_session_id', normalizedSessionId)
         .eq('employee_id', normalizedEmployeeId)
         .order('updated_at', { ascending: false });
-        
+
       if (fallbackError) {
         console.error('Ошибка при проверке существующих результатов:', fallbackError);
         throw fallbackError;
       }
-      
+
       // Используем результаты из обычного запроса
       if (fallbackResults && fallbackResults.length > 0) {
         console.log('Найден существующий результат, обновляем вместо создания нового. ID:', fallbackResults[0].id);
-        
+
         // Добавляем небольшую задержку для предотвращения гонок данных
         await new Promise(resolve => setTimeout(resolve, 100));
-        
+
         // Обновляем существующую запись
         const { data: updatedData, error: updateError } = await supabase
           .from('test_results')
@@ -1567,20 +1462,20 @@ export async function saveTestResult(testResult: Omit<TestResult, 'id' | 'create
           .eq('id', fallbackResults[0].id)
           .select()
           .single();
-          
+
         if (updateError) {
           console.error('Ошибка при обновлении результата теста:', updateError);
           throw updateError;
         }
-        
+
         console.log('Результат теста успешно обновлен:', updatedData);
         return updatedData;
       } else {
         console.log('Создаем новую запись результата теста (обычный режим)');
-        
+
         // Добавляем небольшую задержку перед созданием
         await new Promise(resolve => setTimeout(resolve, 100));
-        
+
         // Результат не найден, создаем новый с попытками при конфликте
         try {
           const { data, error } = await supabase
@@ -1592,17 +1487,17 @@ export async function saveTestResult(testResult: Omit<TestResult, 'id' | 'create
             }])
             .select()
             .single();
-          
+
           if (error) {
             throw error;
           }
-          
+
           console.log('Новый результат теста успешно сохранен:', data);
           return data;
         } catch (insertError) {
           // Если произошла ошибка при вставке, попробуем найти и обновить
           console.error('Ошибка при вставке, пробуем найти существующую запись:', insertError);
-          
+
           // Проверяем, не появилась ли запись из-за параллельного запроса
           const { data: retryResults, error: retryError } = await supabase
             .from('test_results')
@@ -1610,12 +1505,12 @@ export async function saveTestResult(testResult: Omit<TestResult, 'id' | 'create
             .eq('test_session_id', normalizedSessionId)
             .eq('employee_id', normalizedEmployeeId)
             .limit(1);
-            
+
           if (retryError || !retryResults || retryResults.length === 0) {
             // Если и сейчас запись не найдена, выбрасываем исходную ошибку
             throw insertError;
           }
-          
+
           // Обновляем найденную запись
           const { data: updatedAfterRetry, error: updateRetryError } = await supabase
             .from('test_results')
@@ -1626,21 +1521,21 @@ export async function saveTestResult(testResult: Omit<TestResult, 'id' | 'create
             .eq('id', retryResults[0].id)
             .select()
             .single();
-            
+
           if (updateRetryError) {
             throw updateRetryError;
           }
-          
+
           console.log('Результат успешно обновлен после повторной попытки:', updatedAfterRetry);
           return updatedAfterRetry;
         }
       }
     }
-    
+
     // Используем RPC с блокировкой
     if (existingResults && existingResults.length > 0) {
       console.log('Найден существующий результат через RPC, обновляем. ID:', existingResults[0].id);
-      
+
       // Обновляем существующую запись
       const { data: updatedData, error: updateError } = await supabase
         .from('test_results')
@@ -1651,17 +1546,17 @@ export async function saveTestResult(testResult: Omit<TestResult, 'id' | 'create
         .eq('id', existingResults[0].id)
         .select()
         .single();
-        
+
       if (updateError) {
         console.error('Ошибка при обновлении результата теста:', updateError);
         throw updateError;
       }
-      
+
       console.log('Результат теста успешно обновлен через RPC:', updatedData);
       return updatedData;
     } else {
       console.log('Создаем новую запись результата теста через RPC');
-      
+
       // Вставляем новую запись через RPC с предотвращением дубликатов
       const { data: insertedData, error: insertError } = await supabase.rpc('insert_test_result_safe', {
         p_test_session_id: normalizedSessionId,
@@ -1672,10 +1567,10 @@ export async function saveTestResult(testResult: Omit<TestResult, 'id' | 'create
           updated_at: new Date().toISOString()
         }
       });
-      
+
       if (insertError) {
         console.error('Ошибка при вставке через RPC:', insertError);
-        
+
         // Пробуем обычную вставку как запасной вариант
         const { data, error } = await supabase
           .from('test_results')
@@ -1686,28 +1581,28 @@ export async function saveTestResult(testResult: Omit<TestResult, 'id' | 'create
           }])
           .select()
           .single();
-          
+
         if (error) {
           console.error('Ошибка при обычной вставке:', error);
           throw error;
         }
-        
+
         console.log('Новый результат теста успешно сохранен обычным методом:', data);
         return data;
       }
-      
+
       console.log('Новый результат теста успешно сохранен через RPC:', insertedData);
       return insertedData;
     }
   } catch (error) {
     console.error('Ошибка в saveTestResult:', error);
-    
+
     // Дополнительная проверка на то, существует ли уже запись
     try {
       if (testResult.test_session_id && testResult.employee_id) {
         const normalizedSessionId = testResult.test_session_id.trim().toLowerCase();
         const normalizedEmployeeId = testResult.employee_id.trim().toLowerCase();
-        
+
         console.log('Проверка существования записи после ошибки...');
         const { data: existingRecord } = await supabase
           .from('test_results')
@@ -1716,7 +1611,7 @@ export async function saveTestResult(testResult: Omit<TestResult, 'id' | 'create
           .eq('employee_id', normalizedEmployeeId)
           .order('updated_at', { ascending: false })
           .limit(1);
-          
+
         if (existingRecord && existingRecord.length > 0) {
           console.log('Найдена существующая запись после ошибки:', existingRecord[0]);
           return existingRecord[0];
@@ -1725,7 +1620,7 @@ export async function saveTestResult(testResult: Omit<TestResult, 'id' | 'create
     } catch (finalCheckError) {
       console.error('Ошибка при финальной проверке:', finalCheckError);
     }
-    
+
     throw error;
   }
 }
@@ -1736,62 +1631,62 @@ export async function saveTestResult(testResult: Omit<TestResult, 'id' | 'create
 export async function getTestResultForSession(sessionId: string): Promise<TestResult | null> {
   try {
     console.log('[getTestResultForSession] Начало запроса для сессии:', sessionId);
-    
+
     if (!sessionId) {
       console.error('[getTestResultForSession] Ошибка: Пустой ID сессии');
       return null;
     }
-    
+
     // Проверка валидности UUID
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sessionId)) {
       console.error('[getTestResultForSession] Ошибка: Невалидный формат UUID:', sessionId);
       return null;
     }
-    
+
     console.log('[getTestResultForSession] Выполняем запрос к базе данных...');
-    
+
     // Сначала проверяем, есть ли несколько записей для данного sessionId
     const { data: allResults, error: allResultsError } = await supabase
-        .from('test_results')
-        .select('*')
-        .eq('test_session_id', sessionId)
-        .order('updated_at', { ascending: false });
-        
+      .from('test_results')
+      .select('*')
+      .eq('test_session_id', sessionId)
+      .order('updated_at', { ascending: false });
+
     if (allResultsError) {
       console.error('[getTestResultForSession] Ошибка при получении всех результатов:', allResultsError);
       throw allResultsError;
     }
-    
+
     if (!allResults || allResults.length === 0) {
       console.log('[getTestResultForSession] Результаты теста не найдены для сессии:', sessionId);
       return null;
     }
-    
+
     // Если найдено несколько результатов, используем самый свежий
     if (allResults.length > 1) {
       console.log(`[getTestResultForSession] Найдено ${allResults.length} результатов для сессии ${sessionId}. Используем самый свежий.`);
-      
+
       // Сортируем по updated_at (хотя это уже должно быть сделано в запросе)
       const sortedResults = [...allResults].sort((a, b) => {
         return new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime();
       });
-      
+
       const mostRecentResult = sortedResults[0];
       console.log('[getTestResultForSession] Выбран самый свежий результат. ID результата:', mostRecentResult.id);
       console.log('[getTestResultForSession] Дата обновления:', mostRecentResult.updated_at);
-      
+
       if (sortedResults.length > 1) {
         console.warn(`[getTestResultForSession] ВНИМАНИЕ: В базе данных содержится ${sortedResults.length} дубликатов результатов для сессии ${sessionId}`);
       }
-      
+
       return mostRecentResult;
     }
-    
+
     // Если найден только один результат
     console.log('[getTestResultForSession] Результат успешно получен. ID результата:', allResults[0].id);
-    console.log('[getTestResultForSession] Проверка анализа:', 
+    console.log('[getTestResultForSession] Проверка анализа:',
       allResults[0].analysis_result ? 'Анализ доступен' : 'Анализ отсутствует');
-    
+
     return allResults[0];
   } catch (error) {
     console.error('[getTestResultForSession] Критическая ошибка:', error);
@@ -1805,18 +1700,18 @@ export async function getTestResultForSession(sessionId: string): Promise<TestRe
 export async function getTestResultsForEmployee(employeeId: string): Promise<TestResult[]> {
   try {
     console.log('Fetching test results for employee:', employeeId);
-    
+
     const { data, error } = await supabase
-        .from('test_results')
+      .from('test_results')
       .select('*')
       .eq('employee_id', employeeId)
       .order('created_at', { ascending: false });
-      
+
     if (error) {
       console.error('Error fetching test results:', error);
       throw error;
     }
-    
+
     console.log(`Fetched ${data?.length || 0} test results for employee:`, employeeId);
     return data || [];
   } catch (error) {
@@ -1831,17 +1726,17 @@ export async function getTestResultsForEmployee(employeeId: string): Promise<Tes
 export async function generateAnalysisPrompt(sessionId: string): Promise<string> {
   try {
     console.log('Generating analysis prompt for session:', sessionId);
-    
+
     // Получаем все чаты для сессии
     const chats = await getTestSessionChats(sessionId);
-    
+
     // Получаем информацию о сессии
     const session = await getTestSession(sessionId);
-    
+
     if (!chats || chats.length === 0) {
       throw new Error('No chats found for session');
     }
-    
+
     // Формируем заголовок промпта
     const promptHeader = `Ты — Grok 3, созданный xAI. Я предоставлю тебе текстовый диалог между тестируемым чаттером (соискателем на роль администратора моей страницы OnlyFans) и AI-клиентом OnlyFans. Твоя задача — проанализировать диалог и оценить чаттера по следующим 6 критериям:
 
@@ -1940,13 +1835,13 @@ export async function generateAnalysisPrompt(sessionId: string): Promise<string>
 
 Вот диалоги для анализа:
 `;
-    
+
     // Формируем части промпта из каждого чата
     const chatPrompts = chats.map(chat => {
       const chatNumber = chat.chat_number;
       let characterType = '';
-      
-      switch(chatNumber) {
+
+      switch (chatNumber) {
         case 1:
           characterType = 'Страстный клиент (Marcus)';
           break;
@@ -1962,23 +1857,23 @@ export async function generateAnalysisPrompt(sessionId: string): Promise<string>
         default:
           characterType = `Клиент ${chatNumber}`;
       }
-      
+
       const messages = chat.messages || [];
       if (messages.length === 0) {
         return `\n\n--- Чат ${chatNumber} (${characterType}) ---\nНет сообщений`;
       }
-      
+
       const formattedMessages = messages.map(msg => {
         const roleLabel = msg.isOwn ? 'Соискатель' : `AI-клиент (${characterType})`;
         return `${roleLabel}: ${msg.content}`;
       }).join('\n');
-      
+
       return `\n\n--- Чат ${chatNumber} (${characterType}) ---\n${formattedMessages}`;
     }).join('');
-    
+
     // Собираем полный промпт
     const fullPrompt = promptHeader + chatPrompts;
-    
+
     console.log('Analysis prompt generated successfully, length:', fullPrompt.length);
     return fullPrompt;
   } catch (error) {
@@ -1990,39 +1885,39 @@ export async function generateAnalysisPrompt(sessionId: string): Promise<string>
 export async function saveCandidateForm(formData: CandidateFormInput) {
   try {
     console.log('Saving candidate form data for user:', formData.employee_id, formData);
-    
+
     // Получаем ID сотрудника из параметра
     const employeeId = formData.employee_id;
-    
+
     if (!employeeId) {
       throw new Error('ID сотрудника не найден. Пожалуйста, начните процесс регистрации заново.');
     }
-    
+
     // Обновляем имя сотрудника в таблице employees
     if (formData.first_name) {
       const { error: nameUpdateError } = await supabase
         .from('employees')
         .update({ first_name: formData.first_name })
         .eq('id', employeeId);
-        
+
       if (nameUpdateError) {
         console.error('Error updating employee name:', nameUpdateError);
         // Продолжаем процесс даже при ошибке обновления имени
       }
     }
-    
+
     // Проверяем, существует ли уже анкета для этого сотрудника
     const { data: existingForm, error: checkError } = await supabase
       .from('candidate_forms')
       .select('id')
       .eq('employee_id', employeeId)
       .single();
-      
+
     if (checkError && checkError.code !== 'PGRST116') { // PGRST116 - запись не найдена
       console.error('Error checking existing form:', checkError);
       // Продолжаем процесс даже при ошибке
     }
-    
+
     // Подготавливаем данные анкеты
     const formDataToSave = {
       telegram_tag: formData.telegram_tag,
@@ -2032,52 +1927,52 @@ export async function saveCandidateForm(formData: CandidateFormInput) {
       about_me: formData.about_me,
       updated_at: new Date().toISOString()
     };
-    
+
     let result;
-    
+
     // Если анкета уже существует, обновляем её
     if (existingForm) {
       console.log('Updating existing candidate form:', existingForm.id);
-      
+
       const { data, error } = await supabase
         .from('candidate_forms')
         .update(formDataToSave)
         .eq('id', existingForm.id)
         .select()
         .single();
-        
+
       if (error) {
         console.error('Error updating candidate form:', error);
         throw new Error(`Error updating candidate form: ${error.message}`);
       }
-      
+
       result = data;
     } else {
       // Иначе создаем новую анкету
       console.log('Creating new candidate form for employee:', employeeId);
-      
+
       // Добавляем employee_id к данным анкеты
       const newFormData = {
         ...formDataToSave,
         employee_id: employeeId,
       };
-      
+
       const { data, error } = await supabase
         .from('candidate_forms')
         .insert([newFormData])
         .select()
         .single();
-        
+
       if (error) {
         console.error('Error saving candidate form:', error);
         throw new Error(`Error saving candidate form: ${error.message}`);
       }
-      
+
       result = data;
     }
-    
+
     console.log('Candidate form saved successfully:', result);
-    
+
     // Получаем и помечаем токен как использованный после успешного сохранения формы
     try {
       // Находим активный токен для этого сотрудника
@@ -2088,7 +1983,7 @@ export async function saveCandidateForm(formData: CandidateFormInput) {
         .eq('is_used', false)
         .order('created_at', { ascending: false })
         .limit(1);
-        
+
       if (tokenData && tokenData.length > 0) {
         // Помечаем токен как использованный
         await markTokenAsUsed(tokenData[0].token);
@@ -2097,12 +1992,12 @@ export async function saveCandidateForm(formData: CandidateFormInput) {
       console.warn('Error marking token as used after form save:', tokenError);
       // Не прерываем процесс при ошибке с токеном
     }
-    
+
     // Очищаем sessionStorage после успешного сохранения
     if (typeof sessionStorage !== 'undefined') {
       sessionStorage.removeItem('candidateFormData');
     }
-    
+
     // Сохраняем employee_id в возвращаемых данных для последующего использования
     return {
       ...result,
@@ -2174,16 +2069,16 @@ export async function createUser(userData: {
 export async function createCandidateToken(employeeId: string): Promise<string> {
   try {
     console.log('Creating candidate token for employee:', employeeId);
-    
+
     // Генерируем уникальный токен
-    const token = Math.random().toString(36).substring(2, 10) + 
-                 Date.now().toString(36) + 
-                 Math.random().toString(36).substring(2, 10);
-    
+    const token = Math.random().toString(36).substring(2, 10) +
+      Date.now().toString(36) +
+      Math.random().toString(36).substring(2, 10);
+
     // Устанавливаем срок действия токена (7 дней)
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7);
-    
+
     // Деактивируем все предыдущие токены для этого сотрудника
     try {
       await supabase
@@ -2191,13 +2086,13 @@ export async function createCandidateToken(employeeId: string): Promise<string> 
         .update({ is_used: true })
         .eq('employee_id', employeeId)
         .eq('is_used', false);
-        
+
       console.log('Deactivated previous tokens for employee:', employeeId);
     } catch (deactivateError) {
       console.warn('Error deactivating previous tokens:', deactivateError);
       // Продолжаем выполнение даже при ошибке
     }
-    
+
     // Сохраняем новый токен в базе данных
     const { data, error } = await supabase
       .from('candidate_tokens')
@@ -2211,16 +2106,16 @@ export async function createCandidateToken(employeeId: string): Promise<string> 
       ])
       .select()
       .single();
-      
+
     if (error) {
       console.error('Error creating candidate token:', error);
       throw new Error(`Failed to create candidate token: ${error.message}`);
     }
-    
+
     if (!data) {
       throw new Error('No data returned from candidate token creation');
     }
-    
+
     console.log('Token created successfully:', data.token);
     return data.token;
   } catch (error) {
@@ -2250,19 +2145,19 @@ export async function validateCandidateToken(token: string): Promise<TokenValida
         errorCode: 'INVALID_FORMAT'
       };
     }
-    
+
     console.log('Validating candidate token:', token);
-    
+
     // Получаем токен из базы данных
     const { data, error } = await supabase
       .from('candidate_tokens')
       .select('id, employee_id, expires_at, is_used')
       .eq('token', token)
       .single();
-    
+
     if (error) {
       console.error('Error validating token:', error);
-      
+
       // Проверяем, является ли ошибка связанной с отсутствием данных
       if (error.code === 'PGRST116') {
         // Токен не найден
@@ -2272,10 +2167,10 @@ export async function validateCandidateToken(token: string): Promise<TokenValida
           errorCode: 'NOT_FOUND'
         };
       }
-      
+
       throw error;
     }
-    
+
     if (!data) {
       console.error('No token data found');
       return {
@@ -2283,11 +2178,11 @@ export async function validateCandidateToken(token: string): Promise<TokenValida
         errorCode: 'NOT_FOUND'
       };
     }
-    
+
     // Проверяем, не истек ли срок действия токена
     const expiresAt = new Date(data.expires_at);
     const now = new Date();
-    
+
     if (expiresAt < now) {
       console.error('Token has expired:', {
         token: token,
@@ -2299,7 +2194,7 @@ export async function validateCandidateToken(token: string): Promise<TokenValida
         errorCode: 'EXPIRED'
       };
     }
-    
+
     // Проверяем, не использован ли уже токен
     if (data.is_used) {
       console.error('Token has already been used:', token);
@@ -2309,10 +2204,10 @@ export async function validateCandidateToken(token: string): Promise<TokenValida
         employeeId: data.employee_id // Возвращаем ID сотрудника для возможности перенаправления
       };
     }
-    
+
     // Больше не отмечаем токен как использованный при простой валидации
     // Это будет делать отдельная функция markTokenAsUsed
-    
+
     // Возвращаем ID сотрудника и статус успеха
     return {
       success: true,
@@ -2336,38 +2231,38 @@ export async function markTokenAsUsed(token: string): Promise<boolean> {
       console.error('Invalid token to mark as used');
       return false;
     }
-    
+
     console.log('Marking candidate token as used:', token);
-    
+
     // Получаем токен из базы данных
     const { data, error } = await supabase
       .from('candidate_tokens')
       .select('id, is_used')
       .eq('token', token)
       .single();
-    
+
     if (error || !data) {
       console.error('Error fetching token to mark as used:', error);
       return false;
     }
-    
+
     // Если токен уже использован, ничего не делаем
     if (data.is_used) {
       console.log('Token already marked as used:', token);
       return true;
     }
-    
+
     // Обновляем статус токена
     const { error: updateError } = await supabase
       .from('candidate_tokens')
       .update({ is_used: true })
       .eq('id', data.id);
-      
+
     if (updateError) {
       console.error('Error marking token as used:', updateError);
       return false;
     }
-    
+
     console.log('Token successfully marked as used:', token);
     return true;
   } catch (error) {
@@ -2405,33 +2300,33 @@ export async function getCandidateForm(employeeId: string) {
 export async function updateChatStatus(sessionId: string, chatNumber: 1 | 2 | 3 | 4, status: { isTyping?: boolean, unreadCount?: number }) {
   try {
     console.log('Updating chat status:', { sessionId, chatNumber, status });
-    
+
     // Получаем сессию для проверки её существования
     const session = await getTestSession(sessionId);
-    
+
     if (!session) {
       throw new Error('Сессия не найдена');
     }
-    
+
     if (session.completed) {
       throw new Error('Невозможно обновить статус для завершенной сессии');
     }
-    
+
     // Находим чат по номеру
     const { data: chats, error: chatsError } = await supabase
       .from('chats')
       .select('*')
       .eq('test_session_id', sessionId)
       .eq('chat_number', chatNumber);
-    
+
     if (chatsError) {
       console.error('Error fetching chat:', chatsError);
       throw chatsError;
     }
-    
+
     if (!chats || chats.length === 0) {
       console.warn('Chat not found, creating a new one');
-      
+
       // Если чата нет, создаем новый
       const { data: newChat, error: createError } = await supabase
         .from('chats')
@@ -2442,19 +2337,19 @@ export async function updateChatStatus(sessionId: string, chatNumber: 1 | 2 | 3 
           metadata: status // Сохраняем статус в метаданных
         })
         .select();
-      
+
       if (createError) {
         console.error('Error creating chat:', createError);
         throw createError;
       }
-      
+
       return newChat?.[0] || null;
     }
-    
+
     // Обновляем метаданные чата
     const chat = chats[0];
     const existingMetadata = chat.metadata || {};
-    
+
     const { data: updatedChat, error: updateError } = await supabase
       .from('chats')
       .update({
@@ -2466,12 +2361,12 @@ export async function updateChatStatus(sessionId: string, chatNumber: 1 | 2 | 3 
       })
       .eq('id', chat.id)
       .select();
-    
+
     if (updateError) {
       console.error('Error updating chat metadata:', updateError);
       throw updateError;
     }
-    
+
     console.log('Chat status updated successfully');
     return updatedChat?.[0] || null;
   } catch (error) {
@@ -2487,7 +2382,7 @@ export async function updateChatStatus(sessionId: string, chatNumber: 1 | 2 | 3 
  * @returns Оставшееся время в секундах или 0, если время истекло
  */
 export async function getRemainingSessionTime(
-  sessionId: string, 
+  sessionId: string,
   totalDurationSeconds: number = TIMER_DURATION_SECONDS
 ): Promise<number> {
   try {
@@ -2495,37 +2390,37 @@ export async function getRemainingSessionTime(
       console.error('[getRemainingSessionTime] Ошибка: Пустой ID сессии');
       return 0;
     }
-    
+
     // Получаем данные о сессии
     const session = await getTestSession(sessionId);
-    
+
     if (!session) {
       console.error('[getRemainingSessionTime] Сессия не найдена:', sessionId);
       return 0;
     }
-    
+
     // Если сессия уже завершена, возвращаем 0
     if (session.completed) {
       console.log('[getRemainingSessionTime] Сессия уже завершена:', sessionId);
       return 0;
     }
-    
+
     // Вычисляем оставшееся время
     const startTime = new Date(session.start_time).getTime();
     const currentTime = Date.now();
     const elapsedSeconds = Math.floor((currentTime - startTime) / 1000);
     const remainingSeconds = Math.max(0, totalDurationSeconds - elapsedSeconds);
-    
+
     console.log('[getRemainingSessionTime] Оставшееся время:', remainingSeconds, 'секунд');
-    
+
     // Если время истекло, но сессия не отмечена как завершенная, обновляем статус
     if (remainingSeconds === 0 && !session.completed) {
       console.log('[getRemainingSessionTime] Время истекло, завершаем сессию:', sessionId);
-      
+
       // Завершаем сессию
       await completeTestSession(sessionId);
     }
-    
+
     return remainingSeconds;
   } catch (error) {
     console.error('[getRemainingSessionTime] Ошибка:', error);
@@ -2549,37 +2444,37 @@ export async function extendSessionTime(
       console.error('[extendSessionTime] Ошибка: Пустой ID сессии');
       return 0;
     }
-    
+
     // Получаем текущее оставшееся время
     const remainingTime = await getRemainingSessionTime(sessionId);
-    
+
     if (remainingTime <= 0) {
       console.log('[extendSessionTime] Нельзя продлить завершенную сессию:', sessionId);
       return 0;
     }
-    
+
     // Получаем сессию
     const session = await getTestSession(sessionId);
-    
+
     if (!session) {
       console.error('[extendSessionTime] Сессия не найдена:', sessionId);
       return remainingTime;
     }
-    
+
     // Вычисляем новое время старта (сдвигаем назад)
     const currentStartTime = new Date(session.start_time).getTime();
     const newStartTime = new Date(currentStartTime - additionalSeconds * 1000);
-    
+
     // Обновляем время старта
     await updateTestSession(sessionId, {
       start_time: newStartTime.toISOString()
     });
-    
+
     // Получаем обновленное оставшееся время
     const updatedRemainingTime = await getRemainingSessionTime(sessionId);
-    
+
     console.log('[extendSessionTime] Время сессии продлено на', additionalSeconds, 'секунд. Новое оставшееся время:', updatedRemainingTime);
-    
+
     return updatedRemainingTime;
   } catch (error) {
     console.error('[extendSessionTime] Ошибка:', error);

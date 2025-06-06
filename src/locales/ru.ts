@@ -12,7 +12,7 @@ export const ru = {
   away: 'Не в сети',
   typing: 'печатает...',
   you: 'Вы',
-  
+
   // Chat interface
   enterMessage: 'Введите сообщение...',
   addPhotoComment: 'Добавьте комментарий к фото...',
@@ -22,27 +22,27 @@ export const ru = {
   photoComment: 'Комментарий к фото',
   bought: 'Куплено',
   notBought: 'Не куплено',
-  
+
   // Chat descriptions
   passionateClient: 'Страстный клиент',
   capriciousClient: 'Капризный клиент',
   bargainingClient: 'Торгуется о цене',
   testingBoundaries: 'Проверяет границы',
-  
+
   // Errors
   errorSendingMessage: 'Произошла ошибка при отправке сообщения. Пожалуйста, попробуйте еще раз.',
   errorSendingPhoto: 'Произошла ошибка при отправке фото. Пожалуйста, попробуйте еще раз.',
   sessionNotFound: 'Тестовая сессия не найдена. Пожалуйста, перезагрузите страницу.',
-  
+
   // Chat
   chat: {
     timeExpired: 'Время истекло. Отправка сообщений невозможна.'
   },
-  
+
   // Dialogs
   selectPhotoPrice: 'Выберите цену фото',
   confirmSendPhoto: 'Отправить фото',
-  
+
   // Test completion
   congratulations: 'Поздравляем!',
   testCompletedSuccessfully: 'Вы успешно завершили тестирование коммуникативных навыков.',
@@ -50,11 +50,11 @@ export const ru = {
   itWillTakeSeconds: 'Это займет несколько секунд',
   redirecting: 'Перенаправление...',
   pleaseWait: 'Пожалуйста, подождите',
-  
+
   // Test completed page
   testCompletedTitle: 'Тестирование завершено',
   testCompletedMessage: 'Благодарим за прохождение тестирования! Ваши ответы записаны.',
-  
+
   // Test Information
   testInfoTitle: 'Информация о тестировании',
   testInfoGreeting: 'Здравствуйте',
@@ -71,14 +71,14 @@ export const ru = {
   testInfoRule3: '3. Отвечайте на вопросы самостоятельно и честно',
   testInfoRule4: '4. При технических проблемах обратитесь к администратору',
   testInfoStartTest: 'Начать тест',
-  
+
   // Loading
   loading: 'Загрузка данных...',
-  
+
   // Error
   errorTitle: 'Ошибка загрузки',
   errorReturnForm: 'Вернуться к форме',
-  
+
   // Candidate Form
   candidateForm: {
     title: 'Анкета соискателя',
