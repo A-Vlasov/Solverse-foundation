@@ -79,6 +79,12 @@ function Chat() {
   const params = useParams();
   const { t, locale } = useLocale();
 
+  // Состояние для управления отображением боковой панели на мобильных устройствах
+  const [showSidebar, setShowSidebar] = useState(true);
+
+  // Определяем, является ли устройство мобильным
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+
   const [message, setMessage] = useState('');
   const [selectedUser, setSelectedUser] = useState('Marcus');
   const [timeRemaining, setTimeRemaining] = useState<number>(TIMER_DURATION_SECONDS); // Используем константу вместо 180
@@ -159,9 +165,14 @@ function Chat() {
   const lastSyncTimeRef = useRef<number>(0);
   const syncInProgressRef = useRef<boolean>(false);
 
-  // Устанавливаем флаг монтирования компонента
+  // Устанавливаем флаг монтирования компонента и настраиваем сайдбар для мобильных устройств
   useEffect(() => {
     setIsMounted(true);
+
+    // На мобильных устройствах скрываем сайдбар по умолчанию
+    if (isMobile) {
+      setShowSidebar(false);
+    }
 
     // Получение параметров URL
     if (typeof window !== 'undefined') {
@@ -1781,7 +1792,13 @@ function Chat() {
 
       <nav className="bg-[#2d2d2d] border-b border-[#3d3d3d] px-4 py-3 flex items-center justify-between">
         <div className="flex items-center space-x-4">
-          {/* Удален значок меню (гармошки) */}
+          {/* Добавляем кнопку меню для мобильных устройств */}
+          <button
+            onClick={() => setShowSidebar(!showSidebar)}
+            className="md:hidden mr-2"
+          >
+            <Menu className="w-6 h-6 text-pink-500" />
+          </button>
           <h1 className="text-2xl font-bold bg-gradient-to-r from-pink-500 to-purple-500 bg-clip-text text-transparent">
             FanChat AI
           </h1>
@@ -1797,58 +1814,72 @@ function Chat() {
         </div>
       </nav>
 
-      <div className="flex h-[calc(100vh-64px)]">
-        <div className="w-80 bg-[#2d2d2d] border-r border-[#3d3d3d] p-4">
-          {/* Удаляю поле поиска чатов */}
-          <div className="space-y-4">
-            {users.map((user) => {
-              const lastMessage = chatHistories[user.name]?.slice(-1)[0];
-              const isTyping = userStatus[user.name]?.isTyping;
-              const unreadCount = userStatus[user.name]?.unreadCount || 0;
+      <div className="flex h-[calc(100vh-64px)] relative">
+        {/* Боковая панель со списком чатов с условным отображением на мобильных устройствах */}
+        <div className={`${showSidebar ? 'block' : 'hidden'} md:block absolute md:relative z-10 md:z-auto h-full w-full md:w-80 bg-[#2d2d2d] border-r border-[#3d3d3d]`}>
+          <div className="flex items-center justify-between p-4 border-b border-[#3d3d3d] md:hidden">
+            <h3 className="font-medium">Контакты</h3>
+            <button onClick={() => setShowSidebar(false)} className="text-gray-400">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          <div className="p-4">
+            <div className="space-y-4">
+              {users.map((user) => {
+                const lastMessage = chatHistories[user.name]?.slice(-1)[0];
+                const isTyping = userStatus[user.name]?.isTyping;
+                const unreadCount = userStatus[user.name]?.unreadCount || 0;
 
-              return (
-                <div
-                  key={user.name}
-                  onClick={() => handleUserSelect(user.name)}
-                  className={`flex items-center space-x-3 p-3 rounded-lg cursor-pointer transition-colors duration-200 ${selectedUser === user.name ? 'bg-[#3d3d3d]' : 'hover:bg-[#3d3d3d]'
-                    }`}
-                >
-                  <div className="relative">
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-r from-pink-500 to-purple-500 flex items-center justify-center">
-                      {user.name[0]}
-                    </div>
-                    {unreadCount > 0 && (
-                      <div className="absolute -top-1 -right-1 w-5 h-5 bg-pink-500 rounded-full flex items-center justify-center">
-                        <span className="text-xs font-bold">{unreadCount}</span>
+                return (
+                  <div
+                    key={user.name}
+                    onClick={() => {
+                      handleUserSelect(user.name);
+                      // На мобильных закрываем сайдбар после выбора чата
+                      if (isMobile) {
+                        setShowSidebar(false);
+                      }
+                    }}
+                    className={`flex items-center space-x-3 p-3 rounded-lg cursor-pointer transition-colors duration-200 ${selectedUser === user.name ? 'bg-[#3d3d3d]' : 'hover:bg-[#3d3d3d]'
+                      }`}
+                  >
+                    <div className="relative">
+                      <div className="w-12 h-12 rounded-full bg-gradient-to-r from-pink-500 to-purple-500 flex items-center justify-center">
+                        {user.name[0]}
                       </div>
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold">{user.name}</h3>
-                    <div className="text-sm text-gray-400 truncate">
-                      {isTyping ? (
-                        <span className="text-pink-500">печатает...</span>
-                      ) : (
-                        <div className="flex items-center gap-1">
-                          {lastMessage?.isOwn && <span>Вы: </span>}
-                          <span className="truncate">{lastMessage?.content}</span>
+                      {unreadCount > 0 && (
+                        <div className="absolute -top-1 -right-1 w-5 h-5 bg-pink-500 rounded-full flex items-center justify-center">
+                          <span className="text-xs font-bold">{unreadCount}</span>
                         </div>
                       )}
                     </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold">{user.name}</h3>
+                      <div className="text-sm text-gray-400 truncate">
+                        {isTyping ? (
+                          <span className="text-pink-500">{t('typing')}</span>
+                        ) : (
+                          <div className="flex items-center gap-1">
+                            {lastMessage?.isOwn && <span>{t('you')}: </span>}
+                            <span className="truncate">{lastMessage?.content}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end">
+                      <span className="text-xs text-gray-400">{lastMessage?.time}</span>
+                      {user.status === t('online') && (
+                        <span className="w-2 h-2 mt-1 bg-green-500 rounded-full"></span>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex flex-col items-end">
-                    <span className="text-xs text-gray-400">{lastMessage?.time}</span>
-                    {user.status === 'Online' && (
-                      <span className="w-2 h-2 mt-1 bg-green-500 rounded-full"></span>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         </div>
 
-        <div className="flex-1 flex flex-col">
+        <div className={`flex-1 flex flex-col ${showSidebar && isMobile ? 'hidden' : 'block'}`}>
           <div className="p-4 border-b border-[#3d3d3d] flex items-center justify-between">
             <div className="flex items-center space-x-3">
               <div className="w-10 h-10 rounded-full bg-gradient-to-r from-pink-500 to-purple-500 flex items-center justify-center">
@@ -2001,15 +2032,23 @@ function Chat() {
 
           {/* Модальное окно для установки цены */}
           {showPriceModal && tempSelectedImage && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 px-4">
               <div className="bg-[#2d2d2d] p-6 rounded-lg shadow-lg max-w-md w-full">
-                <h3 className="text-xl font-bold text-white mb-4">{t('selectPhotoPrice')}</h3>
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-xl font-bold text-white">{t('selectPhotoPrice')}</h3>
+                  <button
+                    onClick={() => setShowPriceModal(false)}
+                    className="text-gray-400 hover:text-white"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
 
                 <div className="mb-6">
                   <img
                     src={tempSelectedImage}
                     alt={t('photo')}
-                    className="w-full h-64 object-contain bg-black rounded-md mb-4"
+                    className="w-full h-48 sm:h-64 object-contain bg-black rounded-md mb-4"
                   />
 
                   <div className="space-y-4">
@@ -2041,11 +2080,12 @@ function Chat() {
                         <label className="block text-sm font-medium text-gray-400 mb-1">
                           {t('photoPrice')}
                         </label>
-                        <div className="flex items-center">
+                        <div className="flex items-center w-full">
                           <input
                             type="text"
                             placeholder={t('price')}
                             value={selectedPrice}
+                            className="w-full bg-[#1a1a1a] border border-[#3d3d3d] rounded px-3 py-2 text-white outline-none focus:border-pink-500"
                             disabled={timeRemaining <= 0 || loadingStates[selectedUser]}
                             onFocus={(e: React.FocusEvent<HTMLInputElement>) => e.target.select()}
                             onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
@@ -2176,7 +2216,7 @@ function Chat() {
           {/* Image preview - удаляем поле для ввода цены, так как теперь используем модальное окно */}
           {selectedImage && (
             <div className="p-2 border-t border-[#3d3d3d] bg-[#2d2d2d]">
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 flex-wrap sm:flex-nowrap">
                 <div className="relative inline-block">
                   <img
                     src={selectedImage}
@@ -2192,7 +2232,7 @@ function Chat() {
                 </div>
 
                 {/* Отображаем выбранную цену и комментарий рядом с превью */}
-                <div className="flex-1">
+                <div className="flex-1 w-full">
                   <div className="flex flex-col space-y-1">
                     <span className="bg-pink-500 text-white px-2 py-1 rounded-full text-xs font-bold inline-block w-fit">
                       {selectedPrice}
@@ -2210,10 +2250,18 @@ function Chat() {
 
           {/* Галерея изображений */}
           {showImageGallery && (
-            <div className="fixed bottom-20 left-80 right-4 z-50 bg-[#222222] border border-[#3d3d3d] p-4 rounded-lg shadow-lg max-h-[400px] overflow-y-auto">
+            <div className="fixed bottom-20 left-0 right-0 md:left-80 md:right-4 z-50 bg-[#222222] border border-[#3d3d3d] p-4 rounded-lg shadow-lg max-h-[400px] overflow-y-auto mx-2 md:mx-0">
               <div className="mb-4">
-                <h3 className="text-white text-lg font-medium mb-2">{t('readyPhotos')}</h3>
-                <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-3">
+                <div className="flex justify-between items-center mb-2">
+                  <h3 className="text-white text-lg font-medium">{t('readyPhotos')}</h3>
+                  <button
+                    onClick={toggleImageGallery}
+                    className="text-gray-400 hover:text-white"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
                   {preloadedImages.map((image) => (
                     <div
                       key={image.id}
@@ -2223,7 +2271,7 @@ function Chat() {
                       <img
                         src={image.thumbnail}
                         alt={image.description}
-                        className={`w-full h-24 object-contain bg-black rounded-lg border border-[#3d3d3d] transition-all duration-200 ${timeRemaining > 0 && !loadingStates[selectedUser] ? 'group-hover:border-pink-500' : ''}`}
+                        className={`w-full h-20 md:h-24 object-contain bg-black rounded-lg border border-[#3d3d3d] transition-all duration-200 ${timeRemaining > 0 && !loadingStates[selectedUser] ? 'group-hover:border-pink-500' : ''}`}
                       />
                       <div className={`absolute inset-0 bg-black bg-opacity-0 ${timeRemaining > 0 && !loadingStates[selectedUser] ? 'group-hover:bg-opacity-30' : ''} transition-all duration-200 flex items-center justify-center rounded-lg`}>
                         <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200">

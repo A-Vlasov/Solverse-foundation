@@ -40,13 +40,13 @@ interface MessageProps {
 }
 
 // Внутренний компонент кнопки
-const Button: React.FC<ButtonProps> = ({ 
-  children, 
-  type = 'button', 
-  onClick, 
+const Button: React.FC<ButtonProps> = ({
+  children,
+  type = 'button',
+  onClick,
   disabled = false,
   block = false,
-  className = '' 
+  className = ''
 }) => (
   <button
     type={type}
@@ -59,14 +59,14 @@ const Button: React.FC<ButtonProps> = ({
 );
 
 // Внутренний компонент для текстовых полей
-const TextInput: React.FC<TextInputProps> = ({ 
-  label, 
-  name, 
-  value, 
-  onChange, 
-  type = 'text', 
+const TextInput: React.FC<TextInputProps> = ({
+  label,
+  name,
+  value,
+  onChange,
+  type = 'text',
   required = false,
-  error = '' 
+  error = ''
 }) => (
   <div className="mb-4">
     <label className="block text-sm font-medium text-gray-300 mb-1">
@@ -79,11 +79,10 @@ const TextInput: React.FC<TextInputProps> = ({
         onChange={onChange}
         required={required}
         rows={4}
-        className={`w-full px-4 py-3 rounded-lg bg-[#1a1a1a] border ${
-          error 
-            ? 'border-red-500 focus:border-red-500 focus:ring-red-500' 
-            : 'border-[#3d3d3d] focus:border-pink-500 focus:ring-pink-500'
-        } text-gray-100 focus:ring-2 focus:border-transparent transition duration-200 outline-none resize-none`}
+        className={`w-full px-4 py-3 rounded-lg bg-[#1a1a1a] border ${error
+          ? 'border-red-500 focus:border-red-500 focus:ring-red-500'
+          : 'border-[#3d3d3d] focus:border-pink-500 focus:ring-pink-500'
+          } text-gray-100 focus:ring-2 focus:border-transparent transition duration-200 outline-none resize-none`}
         placeholder={`${label}...`}
       />
     ) : (
@@ -93,11 +92,10 @@ const TextInput: React.FC<TextInputProps> = ({
         value={value}
         onChange={onChange}
         required={required}
-        className={`w-full px-4 py-3 rounded-lg bg-[#1a1a1a] border ${
-          error 
-            ? 'border-red-500 focus:border-red-500 focus:ring-red-500' 
-            : 'border-[#3d3d3d] focus:border-pink-500 focus:ring-pink-500'
-        } text-gray-100 focus:ring-2 focus:border-transparent transition duration-200 outline-none`}
+        className={`w-full px-4 py-3 rounded-lg bg-[#1a1a1a] border ${error
+          ? 'border-red-500 focus:border-red-500 focus:ring-red-500'
+          : 'border-[#3d3d3d] focus:border-pink-500 focus:ring-pink-500'
+          } text-gray-100 focus:ring-2 focus:border-transparent transition duration-200 outline-none`}
         placeholder={`${label}...`}
       />
     )}
@@ -114,11 +112,11 @@ const Form: React.FC<FormProps> = ({ children, onSubmit }) => (
 
 // Внутренний компонент загрузки
 const Loader: React.FC<LoaderProps> = ({ size = 'medium' }) => {
-  const sizeClass = 
+  const sizeClass =
     size === 'small' ? 'w-4 h-4 border-2' :
-    size === 'large' ? 'w-12 h-12 border-4' :
-    'w-8 h-8 border-2';
-  
+      size === 'large' ? 'w-12 h-12 border-4' :
+        'w-8 h-8 border-2';
+
   return (
     <div className={`${sizeClass} border-t-pink-500 border-r-transparent border-b-transparent border-l-transparent rounded-full animate-spin`} />
   );
@@ -126,13 +124,12 @@ const Loader: React.FC<LoaderProps> = ({ size = 'medium' }) => {
 
 // Внутренний компонент сообщения об ошибке
 const Message: React.FC<MessageProps> = ({ type = 'error', message }) => (
-  <div className={`p-4 rounded-lg border flex items-center gap-2 ${
-    type === 'error' 
-      ? 'bg-red-500/10 border-red-500/20 text-red-400' 
-      : type === 'success'
-        ? 'bg-green-500/10 border-green-500/20 text-green-400'
-        : 'bg-blue-500/10 border-blue-500/20 text-blue-400'
-  }`}>
+  <div className={`p-4 rounded-lg border flex items-center gap-2 ${type === 'error'
+    ? 'bg-red-500/10 border-red-500/20 text-red-400'
+    : type === 'success'
+      ? 'bg-green-500/10 border-green-500/20 text-green-400'
+      : 'bg-blue-500/10 border-blue-500/20 text-blue-400'
+    }`}>
     <AlertCircle className="w-5 h-5 flex-shrink-0" />
     <p>{message}</p>
   </div>
@@ -153,10 +150,10 @@ function CandidateForm() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [tokenError, setTokenError] = useState<string | null>(null);
-  
+
   // Используем ref для отслеживания, был ли уже выполнен редирект
   const redirected = useRef(false);
-  
+
   // Убираем хук навигации, используем прямую функцию
   const location = useLocation();
   const params = useParams();
@@ -168,30 +165,30 @@ function CandidateForm() {
   useEffect(() => {
     const urlParams = new URLSearchParams(location.search);
     const langParam = params.lang || urlParams.get('lang');
-    
+
     if (langParam && (langParam === 'en' || langParam === 'ru')) {
       setLocale(langParam);
     }
-    
+
     async function validateToken() {
       try {
         setIsLoading(true);
         setTokenError(null);
-        
+
         // Получаем токен из параметров URL
         const token = params.token || urlParams.get('token');
-        
+
         if (!token) {
           setTokenError(t('candidateForm.errors.missingToken'));
           setIsLoading(false);
           return;
         }
-        
+
         console.log('Token from URL:', token);
-        
+
         // Проверяем токен
         const result = await validateCandidateToken(token);
-        
+
         if (!result.success) {
           // Обрабатываем различные коды ошибок
           switch (result.errorCode) {
@@ -200,49 +197,49 @@ function CandidateForm() {
               if (result.employeeId) {
                 const savedCandidateData = sessionStorage.getItem('candidateData');
                 const savedToken = sessionStorage.getItem('lastUsedToken');
-                
+
                 // Если сохраненный токен не совпадает с текущим, значит это новый токен
                 // И мы должны позволить пользователю продолжить, даже если токен отмечен как использованный
                 if (savedToken && savedToken !== token) {
                   console.log('New token detected for existing employee:', result.employeeId);
-                  
+
                   // Сохраняем новый токен и ID сотрудника
                   sessionStorage.setItem('employeeId', result.employeeId);
                   sessionStorage.setItem('lastUsedToken', token);
-                  
+
                   // Обновляем или создаем candidateData для нового токена
                   const updatedCandidateData = savedCandidateData
                     ? JSON.parse(savedCandidateData)
                     : {};
-                    
+
                   sessionStorage.setItem('candidateData', JSON.stringify({
                     ...updatedCandidateData,
                     employee_id: result.employeeId,
                     userId: result.employeeId, // Добавляем userId для совместимости
                     token: token
                   }));
-                  
+
                   // Проверяем, заполнял ли этот сотрудник уже форму
                   if (updatedCandidateData.employee_id === result.employeeId && updatedCandidateData.form_completed) {
                     navigate(`/test-info?lang=${locale}`);
                     return;
                   }
-                  
+
                   setIsLoading(false);
                   return;
                 }
-                
+
                 if (savedCandidateData) {
                   try {
                     // Если у нас есть данные в sessionStorage, проверяем, заполнена ли форма
                     const candidateData = JSON.parse(savedCandidateData);
-                    
+
                     if (candidateData.employee_id === result.employeeId && candidateData.form_completed) {
                       // Форма уже заполнена, перенаправляем на страницу информации о тесте
                       navigate(`/test-info?lang=${locale}`);
                       return;
                     }
-                    
+
                     // Если форма не заполнена, разрешаем продолжить с этим токеном
                     sessionStorage.setItem('employeeId', result.employeeId);
                     sessionStorage.setItem('lastUsedToken', token);
@@ -252,7 +249,7 @@ function CandidateForm() {
                     console.error('Error parsing session data:', e);
                   }
                 }
-                
+
                 // Если нет данных в sessionStorage или они повреждены, показываем ошибку
                 setTokenError(t('candidateForm.errors.tokenAlreadyUsed'));
               } else {
@@ -269,32 +266,32 @@ function CandidateForm() {
             default:
               setTokenError(t('candidateForm.errors.unexpectedError'));
           }
-          
+
           setIsLoading(false);
           return;
         }
-        
+
         // Токен валиден, сохраняем ID сотрудника
         const employeeId = result.employeeId;
-        
+
         if (!employeeId) {
           setTokenError(t('candidateForm.errors.missingEmployeeId'));
           setIsLoading(false);
           return;
         }
-        
+
         // Сохраняем текущий токен для дальнейших проверок
         sessionStorage.setItem('lastUsedToken', token);
-        
+
         // Проверяем, заполнил ли уже кандидат форму
         const candidateData = JSON.parse(sessionStorage.getItem('candidateData') || '{}');
-        
+
         if (candidateData && candidateData.form_completed) {
           // Форма уже заполнена, перенаправляем на страницу информации о тесте
           navigate(`/test-info?lang=${locale}`);
           return;
         }
-        
+
         // Сохраняем ID сотрудника в sessionStorage
         sessionStorage.setItem('employeeId', employeeId);
         sessionStorage.setItem('candidateData', JSON.stringify({
@@ -303,7 +300,7 @@ function CandidateForm() {
           token: token,
           form_completed: false
         }));
-        
+
         setIsLoading(false);
       } catch (error) {
         console.error('Error validating token:', error);
@@ -311,7 +308,7 @@ function CandidateForm() {
         setIsLoading(false);
       }
     }
-    
+
     validateToken();
   }, [locale]);
 
@@ -360,29 +357,29 @@ function CandidateForm() {
     e.preventDefault();
     setIsSubmitting(true);
     setSubmitError(null);
-    
+
     // Проверяем валидность формы
     if (!validateForm()) {
       setIsSubmitting(false);
       return;
     }
-    
+
     try {
       const employeeId = sessionStorage.getItem('employeeId');
       const currentToken = sessionStorage.getItem('lastUsedToken');
-      
+
       if (!employeeId) {
         setSubmitError(t('candidateForm.errors.missingEmployeeId'));
         setIsSubmitting(false);
         return;
       }
-      
+
       // Сохраняем данные формы
       const formInput = {
         employee_id: employeeId,
         ...formData
       };
-      
+
       // Сохраняем данные в sessionStorage вместе с токеном
       const candidateData = JSON.parse(sessionStorage.getItem('candidateData') || '{}');
       sessionStorage.setItem('candidateData', JSON.stringify({
@@ -393,10 +390,10 @@ function CandidateForm() {
         token: currentToken, // Сохраняем текущий токен
         form_completed: true
       }));
-      
+
       // Сохраняем данные в базу данных
       await saveCandidateForm(formInput);
-      
+
       // Перенаправляем на страницу информации о тесте
       navigate(`/test-info?lang=${locale}`);
     } catch (error) {
@@ -411,7 +408,7 @@ function CandidateForm() {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-[#1a1a1a] flex items-center justify-center py-8 px-4">
-        <div className="flex flex-col items-center">
+        <div className="flex flex-col items-center text-center">
           <div className="w-16 h-16 border-4 border-t-pink-500 border-r-transparent border-b-transparent border-l-transparent rounded-full animate-spin mb-4"></div>
           <p className="text-gray-400">{t('candidateForm.loading')}</p>
         </div>
@@ -422,10 +419,10 @@ function CandidateForm() {
   // Отображаем ошибку токена, если она есть
   if (tokenError) {
     const isTokenAlreadyUsed = tokenError === t('candidateForm.errors.tokenAlreadyUsed');
-    
+
     return (
       <div className="min-h-screen bg-[#1a1a1a] flex items-center justify-center py-8 px-4">
-        <div className="max-w-md w-full bg-[#2d2d2d] rounded-2xl shadow-xl p-8 border border-[#3d3d3d]">
+        <div className="max-w-md w-full bg-[#2d2d2d] rounded-2xl shadow-xl p-8 border border-[#3d3d3d] text-center">
           <div className="flex flex-col items-center mb-6">
             <AlertCircle className="w-16 h-16 text-red-500 mb-4" />
             <h1 className="text-2xl font-bold text-white text-center">
@@ -433,7 +430,7 @@ function CandidateForm() {
             </h1>
             <p className="text-gray-400 mt-2 text-center">{tokenError}</p>
           </div>
-          
+
           <div className="flex flex-col gap-3">
             {isTokenAlreadyUsed && (
               <button
@@ -448,7 +445,7 @@ function CandidateForm() {
                       sessionStorage.setItem('candidateData', JSON.stringify(candidateData));
                     }
                   }
-                  
+
                   navigate(`/test-info?lang=${locale}`);
                 }}
                 className="w-full py-3 bg-gradient-to-r from-pink-500 to-purple-500 rounded-lg font-semibold hover:opacity-90 transition-opacity text-white"
@@ -464,11 +461,10 @@ function CandidateForm() {
                 }
                 window.location.reload();
               }}
-              className={`w-full py-3 rounded-lg font-semibold hover:opacity-90 transition-opacity ${
-                isTokenAlreadyUsed
-                  ? 'bg-[#2d2d2d] border border-[#3d3d3d] text-white hover:bg-[#3a3a3a]'
-                  : 'bg-gradient-to-r from-pink-500 to-purple-500 text-white'
-              }`}
+              className={`w-full py-3 rounded-lg font-semibold hover:opacity-90 transition-opacity ${isTokenAlreadyUsed
+                ? 'bg-[#2d2d2d] border border-[#3d3d3d] text-white hover:bg-[#3a3a3a]'
+                : 'bg-gradient-to-r from-pink-500 to-purple-500 text-white'
+                }`}
             >
               {t('candidateForm.tryAgain')}
             </button>
@@ -482,7 +478,7 @@ function CandidateForm() {
     <div className="min-h-screen bg-[#1a1a1a] py-8 px-4">
       <div className="max-w-3xl mx-auto">
         <div className="bg-[#2d2d2d] rounded-2xl shadow-xl p-8 border border-[#3d3d3d]">
-          <div className="flex flex-col items-center mb-8">
+          <div className="flex flex-col items-center mb-8 text-center">
             <UserCircle className="w-20 h-20 text-pink-500 mb-4" />
             <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-purple-500">
               {t('candidateForm.title')}
@@ -508,9 +504,8 @@ function CandidateForm() {
                 type="text"
                 value={formData.first_name}
                 onChange={handleInputChange}
-                className={`w-full px-4 py-3 rounded-lg bg-[#1a1a1a] border ${
-                  errors.first_name ? 'border-red-500' : 'border-[#3d3d3d]'
-                } text-gray-100 focus:ring-2 focus:ring-pink-500 focus:border-transparent transition duration-200 outline-none`}
+                className={`w-full px-4 py-3 rounded-lg bg-[#1a1a1a] border ${errors.first_name ? 'border-red-500' : 'border-[#3d3d3d]'
+                  } text-gray-100 focus:ring-2 focus:ring-pink-500 focus:border-transparent transition duration-200 outline-none`}
                 placeholder={`${t('candidateForm.fields.name')}...`}
               />
               {errors.first_name && (
@@ -528,9 +523,8 @@ function CandidateForm() {
                 type="text"
                 value={formData.telegram_tag}
                 onChange={handleInputChange}
-                className={`w-full px-4 py-3 rounded-lg bg-[#1a1a1a] border ${
-                  errors.telegram_tag ? 'border-red-500' : 'border-[#3d3d3d]'
-                } text-gray-100 focus:ring-2 focus:ring-pink-500 focus:border-transparent transition duration-200 outline-none`}
+                className={`w-full px-4 py-3 rounded-lg bg-[#1a1a1a] border ${errors.telegram_tag ? 'border-red-500' : 'border-[#3d3d3d]'
+                  } text-gray-100 focus:ring-2 focus:ring-pink-500 focus:border-transparent transition duration-200 outline-none`}
                 placeholder={`${t('candidateForm.fields.telegram')}...`}
               />
               {errors.telegram_tag && (
@@ -546,13 +540,12 @@ function CandidateForm() {
                 <button
                   type="button"
                   onClick={() => setFormData(prev => ({ ...prev, shift: 'night' }))}
-                  className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg border ${
-                    formData.shift === 'night'
-                      ? 'bg-pink-500 border-transparent text-white'
-                      : errors.shift
+                  className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg border ${formData.shift === 'night'
+                    ? 'bg-pink-500 border-transparent text-white'
+                    : errors.shift
                       ? 'bg-[#1a1a1a] border-red-500 text-gray-300 hover:bg-[#2d2d2d]'
                       : 'bg-[#1a1a1a] border-[#3d3d3d] text-gray-300 hover:bg-[#2d2d2d]'
-                  } transition duration-200`}
+                    } transition duration-200`}
                 >
                   <Clock className="w-4 h-4" />
                   {t('candidateForm.shifts.night')}
@@ -560,13 +553,12 @@ function CandidateForm() {
                 <button
                   type="button"
                   onClick={() => setFormData(prev => ({ ...prev, shift: 'day' }))}
-                  className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg border ${
-                    formData.shift === 'day'
-                      ? 'bg-pink-500 border-transparent text-white'
-                      : errors.shift
+                  className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg border ${formData.shift === 'day'
+                    ? 'bg-pink-500 border-transparent text-white'
+                    : errors.shift
                       ? 'bg-[#1a1a1a] border-red-500 text-gray-300 hover:bg-[#2d2d2d]'
                       : 'bg-[#1a1a1a] border-[#3d3d3d] text-gray-300 hover:bg-[#2d2d2d]'
-                  } transition duration-200`}
+                    } transition duration-200`}
                 >
                   <Clock className="w-4 h-4" />
                   {t('candidateForm.shifts.day')}
@@ -574,13 +566,12 @@ function CandidateForm() {
                 <button
                   type="button"
                   onClick={() => setFormData(prev => ({ ...prev, shift: 'evening' }))}
-                  className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg border ${
-                    formData.shift === 'evening'
-                      ? 'bg-pink-500 border-transparent text-white'
-                      : errors.shift
+                  className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg border ${formData.shift === 'evening'
+                    ? 'bg-pink-500 border-transparent text-white'
+                    : errors.shift
                       ? 'bg-[#1a1a1a] border-red-500 text-gray-300 hover:bg-[#2d2d2d]'
                       : 'bg-[#1a1a1a] border-[#3d3d3d] text-gray-300 hover:bg-[#2d2d2d]'
-                  } transition duration-200`}
+                    } transition duration-200`}
                 >
                   <Clock className="w-4 h-4" />
                   {t('candidateForm.shifts.evening')}
@@ -601,9 +592,8 @@ function CandidateForm() {
                 rows={3}
                 value={formData.experience}
                 onChange={handleInputChange}
-                className={`w-full px-4 py-3 rounded-lg bg-[#1a1a1a] border ${
-                  errors.experience ? 'border-red-500' : 'border-[#3d3d3d]'
-                } text-gray-100 focus:ring-2 focus:ring-pink-500 focus:border-transparent transition duration-200 outline-none resize-none`}
+                className={`w-full px-4 py-3 rounded-lg bg-[#1a1a1a] border ${errors.experience ? 'border-red-500' : 'border-[#3d3d3d]'
+                  } text-gray-100 focus:ring-2 focus:ring-pink-500 focus:border-transparent transition duration-200 outline-none resize-none`}
                 placeholder={`${t('candidateForm.fields.experience')}...`}
               />
               {errors.experience && (
@@ -621,9 +611,8 @@ function CandidateForm() {
                 rows={3}
                 value={formData.motivation}
                 onChange={handleInputChange}
-                className={`w-full px-4 py-3 rounded-lg bg-[#1a1a1a] border ${
-                  errors.motivation ? 'border-red-500' : 'border-[#3d3d3d]'
-                } text-gray-100 focus:ring-2 focus:ring-pink-500 focus:border-transparent transition duration-200 outline-none resize-none`}
+                className={`w-full px-4 py-3 rounded-lg bg-[#1a1a1a] border ${errors.motivation ? 'border-red-500' : 'border-[#3d3d3d]'
+                  } text-gray-100 focus:ring-2 focus:ring-pink-500 focus:border-transparent transition duration-200 outline-none resize-none`}
                 placeholder={`${t('candidateForm.fields.motivation')}...`}
               />
               {errors.motivation && (
@@ -641,9 +630,8 @@ function CandidateForm() {
                 rows={4}
                 value={formData.about_me}
                 onChange={handleInputChange}
-                className={`w-full px-4 py-3 rounded-lg bg-[#1a1a1a] border ${
-                  errors.about_me ? 'border-red-500' : 'border-[#3d3d3d]'
-                } text-gray-100 focus:ring-2 focus:ring-pink-500 focus:border-transparent transition duration-200 outline-none resize-none`}
+                className={`w-full px-4 py-3 rounded-lg bg-[#1a1a1a] border ${errors.about_me ? 'border-red-500' : 'border-[#3d3d3d]'
+                  } text-gray-100 focus:ring-2 focus:ring-pink-500 focus:border-transparent transition duration-200 outline-none resize-none`}
                 placeholder={`${t('candidateForm.fields.aboutMe')}...`}
               />
               {errors.about_me && (
@@ -655,9 +643,8 @@ function CandidateForm() {
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className={`w-full py-4 rounded-lg text-white font-semibold transition duration-200 flex items-center justify-center gap-2 bg-gradient-to-r from-pink-500 to-purple-500 hover:opacity-90 ${
-                  isSubmitting ? 'opacity-50 cursor-not-allowed' : ''
-                }`}
+                className={`w-full py-4 rounded-lg text-white font-semibold transition duration-200 flex items-center justify-center gap-2 bg-gradient-to-r from-pink-500 to-purple-500 hover:opacity-90 ${isSubmitting ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}
               >
                 {isSubmitting ? (
                   <>

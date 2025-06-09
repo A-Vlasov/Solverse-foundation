@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { 
-  ArrowLeft, 
-  Star, 
-  MessageCircle, 
-  Smile, 
-  Lightbulb, 
-  RefreshCw, 
+import {
+  ArrowLeft,
+  Star,
+  MessageCircle,
+  Smile,
+  Lightbulb,
+  RefreshCw,
   DollarSign,
   Download,
   Share2,
@@ -21,12 +21,12 @@ import {
   Check,
   Brain
 } from 'lucide-react';
-import { 
-  getChatHistory, 
-  TestSession, 
-  Chat, 
-  ChatMessage, 
-  getEmployeeTestSessions, 
+import {
+  getChatHistory,
+  TestSession,
+  Chat,
+  ChatMessage,
+  getEmployeeTestSessions,
   getTestResultForSession,
   getEmployee,
   getTestSession,
@@ -130,7 +130,7 @@ const debug = (sessionId: string, chats: Chat[], testResult: TestResultState) =>
     overallScore: testResult.overallScore,
     parameters: testResult.parameters.length
   } : 'Отсутствует');
-  
+
   console.log('Возможные причины проблемы:');
   console.log('1. Сессия существует, но чаты не созданы (должно быть 4 чата)');
   console.log('2. Чаты созданы, но сообщения отсутствуют (messagesCounts должны быть > 0)');
@@ -150,46 +150,46 @@ const cleanContent = (text: string): string => {
 const checkPhotoPurchaseStatus = (dialogueMessages: DialogueMessage[], photoMsgIndex: number): boolean => {
   // Получаем сообщение с фотографией
   const photoMsg = dialogueMessages[photoMsgIndex];
-  
+
   // Проверяем, если у сообщения с фото уже есть флаги bought или purchased
   if (photoMsg.bought || photoMsg.purchased) {
     console.log('Фото уже помечено как купленное через флаги bought/purchased');
     return true;
   }
-  
+
   // Проверяем текущее сообщение - есть ли в нем тег [Bought]
   if (photoMsg.content && photoMsg.content.includes('[Bought]')) {
     console.log('Найден тег [Bought] в самом сообщении с фото');
     return true;
   }
-  
+
   // Извлекаем информацию о цене из сообщения с фото
   const priceMatch = photoMsg.content.match(/\[Price: (.*?)\]/);
   if (!priceMatch || priceMatch[1] === 'FREE') {
     console.log('Фото бесплатное или цена не указана');
     return false; // Если фото бесплатное, нет смысла проверять его покупку
   }
-  
+
   // Проверяем все сообщения после фотографии
   for (let i = photoMsgIndex + 1; i < dialogueMessages.length; i++) {
     const msg = dialogueMessages[i];
-    
+
     // Ищем только в ответах бота
     if (!msg.isOwn) {
       // Проверяем наличие тега [Bought] в содержимом сообщения
       if (msg.content.includes('[Bought]')) {
         console.log('Найден тег [Bought] в сообщении бота #' + i);
-      return true;
-    }
-      
+        return true;
+      }
+
       // Проверяем наличие маркера покупки в оригинальном сообщении
       if (msg.boughtTag || msg.purchased || msg.bought) {
         console.log('Найден флаг покупки в метаданных сообщения #' + i);
         return true;
-  }
+      }
     }
   }
-  
+
   // Фотография с ценой, но не найдено признаков покупки
   return false;
 };
@@ -199,7 +199,7 @@ function TestResultsAdmin() {
   const location = useLocation();
   const params = useParams();
   const container = document.querySelector('.test-result-container');
-  
+
   // Состояния
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -215,24 +215,24 @@ function TestResultsAdmin() {
   const [allSessions, setAllSessions] = useState<TestSession[]>([]);
   const [loadingSessions, setLoadingSessions] = useState(false);
   const [calculatingResults, setCalculatingResults] = useState(false);
-  
+
   // Параметры из URL
   const paramSessionId = params.sessionId;
   const lastSegment = location.pathname.split('/').pop();
   const containerSessionId = container?.getAttribute('data-session-id');
-  
+
   // Более простая проверка валидности UUID
   const isValidUUID = (id: string | null): boolean => {
     if (!id) return false;
     // Очень простая проверка - просто убедимся, что это не 'admin'
     return id !== 'admin';
   };
-  
+
   // Определяем, находимся ли на странице /admin без указания ID или на странице сессии
   const isAdminPage = location.pathname === '/admin' || location.pathname === '/admin/';
-  const isSessionPage = location.pathname.includes('/admin/session/') || 
-                       location.pathname.includes('/test-results/');
-  
+  const isSessionPage = location.pathname.includes('/admin/session/') ||
+    location.pathname.includes('/test-results/');
+
   // Создаем переменную для отладки, чтобы отследить откуда получен sessionId
   let sessionIdSource = 'не определен';
 
@@ -249,8 +249,8 @@ function TestResultsAdmin() {
 
   // Переопределяем console.log для оптимизации в зависимости от режима
   const isDevMode = process.env.NODE_ENV === 'development';
-  const logInfo = isDevMode ? console.log : () => {};
-  const logDebug = isDevMode ? console.debug : () => {};
+  const logInfo = isDevMode ? console.log : () => { };
+  const logDebug = isDevMode ? console.debug : () => { };
 
   // Улучшенная логика определения sessionId
   // Приоритет: 1. из URL-пути, 2. параметр из URL, 3. из state, 4. из контейнера, 5. из последнего сегмента URL
@@ -285,9 +285,9 @@ function TestResultsAdmin() {
 
   // Используем sessionId только если мы на странице сессии
   // На админ-странице sessionId всегда null
-  const sessionId = isSessionPage ? finalSessionId : 
-                   (isAdminPage ? null : finalSessionId);
-                   
+  const sessionId = isSessionPage ? finalSessionId :
+    (isAdminPage ? null : finalSessionId);
+
   // Отладочный параметр для принудительной загрузки тестовых данных
   const force_load = location.search.includes('force_load=true');
   if (force_load) {
@@ -312,7 +312,7 @@ function TestResultsAdmin() {
     console.log('fromDashboard:', fromDashboard);
     console.groupEnd();
   }
-  
+
   // Mock data с той же структурой
   const [testResults, setTestResults] = useState<TestResultState>({
     candidateName: '',
@@ -390,10 +390,10 @@ function TestResultsAdmin() {
     const stars = [];
     for (let i = 1; i <= 5; i++) {
       stars.push(
-      <Star 
-          key={i} 
-          className={`w-4 h-4 ${i <= score ? 'text-yellow-400 fill-yellow-400' : 'text-gray-300'}`} 
-      />
+        <Star
+          key={i}
+          className={`w-4 h-4 ${i <= score ? 'text-yellow-400 fill-yellow-400' : 'text-gray-300'}`}
+        />
       );
     }
     return stars;
@@ -408,12 +408,12 @@ function TestResultsAdmin() {
       metrics.adaptability.score,
       metrics.self_promotion.score
     ];
-    
+
     // Если есть ценовая политика, добавляем её оценку
     if (metrics.pricing_policy && metrics.pricing_policy.score) {
       scores.push(metrics.pricing_policy.score);
     }
-    
+
     // Вычисляем среднее
     const sum = scores.reduce((a, b) => a + b, 0);
     return sum / scores.length;
@@ -422,9 +422,9 @@ function TestResultsAdmin() {
   // Animation variants
   const containerVariants = {
     hidden: { opacity: 0 },
-    visible: { 
+    visible: {
       opacity: 1,
-      transition: { 
+      transition: {
         staggerChildren: 0.2
       }
     }
@@ -432,10 +432,10 @@ function TestResultsAdmin() {
 
   const itemVariants = {
     hidden: { x: -50, opacity: 0 },
-    visible: { 
-      x: 0, 
+    visible: {
+      x: 0,
       opacity: 1,
-      transition: { 
+      transition: {
         type: 'spring',
         stiffness: 100,
         damping: 10
@@ -445,9 +445,9 @@ function TestResultsAdmin() {
 
   const fadeInVariants = {
     hidden: { opacity: 0 },
-    visible: { 
+    visible: {
       opacity: 1,
-      transition: { 
+      transition: {
         duration: 0.5
       }
     }
@@ -456,20 +456,20 @@ function TestResultsAdmin() {
   // Функция для загрузки списка всех сессий
   const loadAllSessions = async () => {
     if (!isAdminPage) return;
-    
+
     try {
       setLoadingSessions(true);
-      
+
       // Используем созданный API-маршрут для загрузки сессий
       logInfo('[TestResultsAdmin] Загрузка списка сессий через API');
       const response = await fetch('/api/test-sessions');
-      
+
       if (!response.ok) {
         throw new Error(`Ошибка при загрузке списка сессий: ${response.statusText}`);
       }
-      
+
       const sessions = await response.json();
-      
+
       if (Array.isArray(sessions) && sessions.length > 0) {
         logInfo('[TestResultsAdmin] Загружены сессии:', sessions.length);
         setAllSessions(sessions);
@@ -477,35 +477,35 @@ function TestResultsAdmin() {
         console.warn('[TestResultsAdmin] Сессии не найдены, используем тестовые данные');
         // Создаем тестовый набор сессий для отображения
         const mockSessions = [
-          { 
-            id: 'test-id-1', 
-            created_at: new Date().toISOString(), 
+          {
+            id: 'test-id-1',
+            created_at: new Date().toISOString(),
             employee_id: 'emp-1',
             start_time: new Date().toISOString(),
             end_time: null,
             completed: false,
             updated_at: new Date().toISOString(),
-            employee: { first_name: 'Тестовый', last_name: 'Пользователь' } 
+            employee: { first_name: 'Тестовый', last_name: 'Пользователь' }
           },
-          { 
-            id: 'test-id-2', 
-            created_at: new Date(Date.now() - 86400000).toISOString(), 
+          {
+            id: 'test-id-2',
+            created_at: new Date(Date.now() - 86400000).toISOString(),
             employee_id: 'emp-2',
             start_time: new Date(Date.now() - 86400000).toISOString(),
             end_time: new Date(Date.now() - 86300000).toISOString(),
             completed: true,
             updated_at: new Date(Date.now() - 86300000).toISOString(),
-            employee: { first_name: 'Иван', last_name: 'Петров' } 
+            employee: { first_name: 'Иван', last_name: 'Петров' }
           },
-          { 
-            id: 'test-id-3', 
-            created_at: new Date(Date.now() - 172800000).toISOString(), 
+          {
+            id: 'test-id-3',
+            created_at: new Date(Date.now() - 172800000).toISOString(),
             employee_id: 'emp-3',
             start_time: new Date(Date.now() - 172800000).toISOString(),
             end_time: new Date(Date.now() - 172700000).toISOString(),
             completed: true,
             updated_at: new Date(Date.now() - 172700000).toISOString(),
-            employee: { first_name: 'Мария', last_name: 'Сидорова' } 
+            employee: { first_name: 'Мария', last_name: 'Сидорова' }
           },
         ];
         setAllSessions(mockSessions as TestSession[]);
@@ -535,13 +535,13 @@ function TestResultsAdmin() {
     if (fromDashboard && finalSessionId) {
       // Настраиваем начальное состояние анимации
       setDataLoaded(false);
-      
+
       // Инициируем загрузку данных с небольшим таймаутом 
       // для того чтобы react успел отрисовать предварительную анимацию
       const timer = setTimeout(() => {
         loadData();
       }, 50); // Минимальная задержка для отрисовки UI
-      
+
       return () => clearTimeout(timer);
     }
   }, []);
@@ -549,10 +549,10 @@ function TestResultsAdmin() {
   // Функция для преобразования результатов анализа в формат для отображения
   const processTestResults = (testResult: any, candidateName: string, testDate: string, testDuration: string, dialogues: Dialogue[]): TestResultState => {
     console.log('[TestResultsAdmin] Обработка результатов анализа...');
-    
+
     // Проверяем и форматируем имя кандидата
     const formattedCandidateName = formatCandidateName(candidateName);
-      
+
     if (!testResult || !testResult.analysis_result || !testResult.analysis_result.analysisResult) {
       console.warn('[TestResultsAdmin] Результаты анализа отсутствуют или имеют неверный формат');
       return {
@@ -577,53 +577,53 @@ function TestResultsAdmin() {
         dialogues: dialogues || []
       };
     }
-    
+
     try {
       const analysisData = testResult.analysis_result.analysisResult.dialog_analysis;
       const metrics = analysisData.metrics;
-              
-              // Рассчитываем общую оценку
+
+      // Рассчитываем общую оценку
       const overallScore = calculateOverallScore(metrics);
-      
+
       // Преобразуем метрики в параметры для отображения
       const parameters = [
-                  {
-                    name: 'Вовлеченность',
+        {
+          name: 'Вовлеченность',
           score: metrics.engagement.score,
           comment: metrics.engagement.verdict,
           icon: <MessageCircle className="w-5 h-5" />,
-                    color: 'blue'
-                  },
-                  {
-                    name: 'Обаяние и тон',
+          color: 'blue'
+        },
+        {
+          name: 'Обаяние и тон',
           score: metrics.charm_and_tone.score,
           comment: metrics.charm_and_tone.verdict,
           icon: <Smile className="w-5 h-5" />,
           color: 'yellow'
-                  },
-                  {
-                    name: 'Креативность',
+        },
+        {
+          name: 'Креативность',
           score: metrics.creativity.score,
           comment: metrics.creativity.verdict,
           icon: <Lightbulb className="w-5 h-5" />,
           color: 'purple'
-                  },
-                  {
-                    name: 'Адаптивность',
+        },
+        {
+          name: 'Адаптивность',
           score: metrics.adaptability.score,
           comment: metrics.adaptability.verdict,
           icon: <RefreshCw className="w-5 h-5" />,
-                    color: 'green'
-                  },
-                  {
+          color: 'green'
+        },
+        {
           name: 'Самопродвижение',
           score: metrics.self_promotion.score,
           comment: metrics.self_promotion.verdict,
           icon: <Star className="w-5 h-5" />,
-                    color: 'pink'
-                  }
+          color: 'pink'
+        }
       ];
-      
+
       // Формируем рекомендации из общего заключения и result_summary
       const recommendationsArray = [];
 
@@ -639,11 +639,11 @@ function TestResultsAdmin() {
           .split('.')
           .map((r: string) => r.trim())
           .filter((r: string) => r.length > 10 && !r.includes('Рекомендации:'));
-        
+
         // Добавляем найденные рекомендации в общий массив
         recommendationsArray.push(...splitRecommendations);
       }
-      
+
       // Ценовая политика с дополнительными полями
       const pricingScore = metrics.pricing_policy?.score || 0;
       const pricingEvaluation = {
@@ -651,36 +651,36 @@ function TestResultsAdmin() {
         strengths: metrics.pricing_policy?.strengths || [],
         weaknesses: metrics.pricing_policy?.improvements || [],
         // Добавляем уровень и детали
-        level: pricingScore >= 4 ? 'Высокая' : 
-               pricingScore >= 3 ? 'Средняя' : 
-               pricingScore > 0 ? 'Низкая' : 'Не определен',
+        level: pricingScore >= 4 ? 'Высокая' :
+          pricingScore >= 3 ? 'Средняя' :
+            pricingScore > 0 ? 'Низкая' : 'Не определен',
         details: metrics.pricing_policy?.verdict || 'Информация отсутствует'
       };
-      
+
       // Стадии продаж с вычислением конверсии
       const salesPerformance = {
-                    introduction: {
+        introduction: {
           score: metrics.sales_stages?.introduction?.score || 0,
           conversionRate: Math.round((metrics.sales_stages?.introduction?.score || 0) * 20), // Преобразуем оценку 0-5 в процент 0-100
           strengths: metrics.sales_stages?.introduction?.strengths || [],
           weaknesses: metrics.sales_stages?.introduction?.weaknesses || []
-                    },
-                    warmup: {
+        },
+        warmup: {
           score: metrics.sales_stages?.warmup?.score || 0,
           conversionRate: Math.round((metrics.sales_stages?.warmup?.score || 0) * 20),
           strengths: metrics.sales_stages?.warmup?.strengths || [],
           weaknesses: metrics.sales_stages?.warmup?.weaknesses || []
-                    },
-                    sales: {
+        },
+        sales: {
           score: metrics.sales_stages?.closing?.score || 0,
           conversionRate: Math.round((metrics.sales_stages?.closing?.score || 0) * 20),
           strengths: metrics.sales_stages?.closing?.strengths || [],
           weaknesses: metrics.sales_stages?.closing?.weaknesses || []
         }
       };
-      
+
       console.log('[TestResultsAdmin] Данные успешно обработаны для отображения');
-      
+
       // Возвращаем обработанные данные
       return {
         candidateName: formattedCandidateName,
@@ -723,23 +723,23 @@ function TestResultsAdmin() {
   const loadData = async () => {
     setLoading(true);
     setError(null);
-    
+
     logInfo('[TestResultsAdmin] Начинаем загрузку данных...');
-    
+
     if (!sessionId && isAdminPage) {
       logInfo('[TestResultsAdmin] Это страница админ-панели, загружаем список сессий');
       await loadAllSessions();
-          setLoading(false);
+      setLoading(false);
       return;
     }
-    
+
     if (!sessionId && !force_load) {
       console.error('[TestResultsAdmin] Отсутствует ID сессии для загрузки данных');
       setError('Не указан ID сессии. Пожалуйста, вернитесь в панель управления и выберите сессию.');
-        setLoading(false);
+      setLoading(false);
       return;
     }
-    
+
     // Проверка формата sessionId с UUID только если не принудительная загрузка
     if (!force_load) {
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -750,39 +750,39 @@ function TestResultsAdmin() {
         return;
       }
     }
-    
+
     try {
       // Используем прямые API запросы вместо вызовов supabase
       logInfo('[TestResultsAdmin] Выполняем API запросы для получения данных...');
-      
+
       if (isDevMode) {
         console.time('Время загрузки данных');
       }
-      
+
       // Получаем информацию о сессии тестирования напрямую через API
       const sessionResponse = await fetch(`/api/test-sessions/${sessionId}`);
-      
+
       if (!sessionResponse.ok) {
         throw new Error(`Ошибка при загрузке сессии: ${sessionResponse.statusText}`);
       }
-      
+
       const sessionData = await sessionResponse.json();
-      
+
       if (!sessionData || !sessionData.session) {
         throw new Error('Данные о сессии не найдены');
       }
-      
+
       // Извлекаем данные сессии и чатов из ответа API
       const session = sessionData.session;
       const chats = sessionData.chats || [];
-      
+
       console.log('[TestResultsAdmin] Получены данные сессии:', {
         sessionId: session.id,
         employee: session.employee,
         created_at: session.created_at,
         chatsCount: chats.length
       });
-      
+
       // Сохраняем ID сотрудника для дальнейшего использования
       if (session.employee_id) {
         setEmployeeId(session.employee_id);
@@ -793,10 +793,10 @@ function TestResultsAdmin() {
       } else {
         console.warn('[TestResultsAdmin] ID сотрудника не найден в данных сессии');
       }
-      
+
       // Получаем результаты тестирования через API
       const testResultResponse = await fetch(`/api/test-results/${sessionId}`);
-      
+
       // Обрабатываем результаты тестирования, даже если их нет
       let testResultData = null;
       if (testResultResponse.ok) {
@@ -811,57 +811,57 @@ function TestResultsAdmin() {
       } else {
         console.warn('[TestResultsAdmin] Результаты тестирования не найдены для сессии');
       }
-      
+
       if (isDevMode) {
         console.timeEnd('Время загрузки данных');
       }
-      
+
       // Обрабатываем историю чатов
       const formattedDialogues = formatDialogues(chats || []);
-      
+
       // Обрабатываем данные кандидата из сессии
-      const candidateName = session.employee && session.employee.first_name 
+      const candidateName = session.employee && session.employee.first_name
         ? `${session.employee.first_name} ${session.employee.last_name || ''}`.trim()
         : 'Неизвестный кандидат';
-      
+
       // Обрабатываем дату и продолжительность
       const testDate = formatDate(session.created_at);
       const testDuration = calculateTestDuration(session.start_time, session.end_time);
-      
+
       // Обрабатываем результаты тестирования
       const processedResults = processTestResults(
-        testResultData, 
-        candidateName, 
-        testDate, 
-        testDuration, 
+        testResultData,
+        candidateName,
+        testDate,
+        testDuration,
         formattedDialogues
       );
-      
+
       // Устанавливаем обработанные результаты
       setTestResult(processedResults);
       setTestResults(processedResults); // Устанавливаем также в дубликат для отображения
-      
+
       // Устанавливаем диалоги отдельно, чтобы они всегда были доступны
       setDialogues(formattedDialogues || []);
       setChats(chats || []);
-      
+
       // Если диалоги есть, выбираем первый
       if (formattedDialogues && formattedDialogues.length > 0) {
         setSelectedDialogue(formattedDialogues[0].id);
       }
-      
+
       // Устанавливаем флаг загрузки данных
       setDataLoaded(true);
-      
+
       if (!testResultData) {
         setWarning('Результаты анализа для этой сессии отсутствуют, но вы можете просмотреть диалоги');
-            } else {
+      } else {
         logInfo('[TestResultsAdmin] Результаты анализа успешно загружены');
       }
-      
+
       // Добавляем дополнительную диагностику
       debug(sessionId, chats, processedResults);
-      
+
     } catch (error) {
       console.error('[TestResultsAdmin] Ошибка при загрузке данных:', error);
       const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
@@ -890,15 +890,15 @@ function TestResultsAdmin() {
     if (!chatHistory || chatHistory.length === 0) {
       return [];
     }
-    
+
     // Массив имен персонажей
     const characterNames = ['Marcus', 'Shrek', 'Oliver', 'Alex'];
-    
+
     const dialogues: Dialogue[] = chatHistory.map((chat: Chat) => ({
-            id: chat.id,
-            title: `Диалог с ${characterNames[chat.chat_number - 1] || 'Unknown'}`,
+      id: chat.id,
+      title: `Диалог с ${characterNames[chat.chat_number - 1] || 'Unknown'}`,
       date: formatDate(chat.created_at || ''),
-            score: 85,
+      score: 85,
       messages: Array.isArray(chat.messages) ? chat.messages.map((msg: ChatMessage, msgIndex: number): DialogueMessage => ({
         id: `msg-${msgIndex}`,
         time: new Date(msg.time || chat.created_at || Date.now()).toLocaleTimeString('ru-RU', {
@@ -916,13 +916,13 @@ function TestResultsAdmin() {
         price: msg.price
       })) : []
     }));
-    
+
     // Сортируем диалоги по номеру чата
     dialogues.sort((a, b) => {
-          const aNumber = characterNames.indexOf(a.title.split(' с ')[1]);
-          const bNumber = characterNames.indexOf(b.title.split(' с ')[1]);
-          return aNumber - bNumber;
-        });
+      const aNumber = characterNames.indexOf(a.title.split(' с ')[1]);
+      const bNumber = characterNames.indexOf(b.title.split(' с ')[1]);
+      return aNumber - bNumber;
+    });
 
     return dialogues;
   };
@@ -932,11 +932,11 @@ function TestResultsAdmin() {
     if (!startTime) {
       return 'Не начат';
     }
-    
+
     if (!endTime) {
       return 'Не завершен';
     }
-    
+
     // Независимо от реального времени начала и окончания, возвращаем фиксированное значение в 20 минут
     return '20 мин.';
   };
@@ -947,8 +947,8 @@ function TestResultsAdmin() {
         {/* Заголовок - оставляем только здесь кнопку назад */}
         <div className="mb-8 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <button 
-              onClick={() => window.location.href = '/admin'} 
+            <button
+              onClick={() => window.location.href = '/admin'}
               className="p-2 bg-[#2a2a2a] rounded-full hover:bg-[#3a3a3a] transition-all"
             >
               <ArrowLeft className="w-5 h-5" />
@@ -962,7 +962,7 @@ function TestResultsAdmin() {
 
         {/* Основное содержимое */}
         {loading ? (
-          <motion.div 
+          <motion.div
             className="flex flex-col items-center justify-center py-20"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -970,10 +970,10 @@ function TestResultsAdmin() {
           >
             <div className="w-16 h-16 border-4 border-t-pink-500 border-pink-500/20 rounded-full animate-spin mb-4"></div>
             <p className="text-gray-400">Загрузка результатов...</p>
-            
+
             {/* Скелетон для бесшовной загрузки при переходе с дашборда */}
             {fromDashboard && (
-              <motion.div 
+              <motion.div
                 className="w-full max-w-4xl mx-auto mt-8"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 0.5 }}
@@ -983,8 +983,8 @@ function TestResultsAdmin() {
                   <div className="h-8 w-64 bg-[#3d3d3d] rounded-md mb-4 animate-pulse"></div>
                   <div className="h-4 w-full bg-[#3d3d3d] rounded-md mb-2 animate-pulse"></div>
                   <div className="h-4 w-3/4 bg-[#3d3d3d] rounded-md animate-pulse"></div>
-          </div>
-                
+                </div>
+
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                   <div className="lg:col-span-2 bg-[#2d2d2d] rounded-2xl p-6 border border-[#3d3d3d]">
                     <div className="h-6 w-48 bg-[#3d3d3d] rounded-md mb-6 animate-pulse"></div>
@@ -997,7 +997,7 @@ function TestResultsAdmin() {
                       ))}
                     </div>
                   </div>
-                  
+
                   <div className="bg-[#2d2d2d] rounded-2xl p-6 border border-[#3d3d3d]">
                     <div className="h-6 w-40 bg-[#3d3d3d] rounded-md mb-6 animate-pulse"></div>
                     <div className="space-y-4">
@@ -1016,12 +1016,12 @@ function TestResultsAdmin() {
               <h3 className="text-xl font-semibold">Ошибка загрузки данных</h3>
             </div>
             <p className="text-gray-400 mb-6">{error}</p>
-            
+
             {isAdminPage && (
               <>
                 <div className="mb-6">
                   <h4 className="font-medium text-white text-lg mb-3">Доступные сессии тестирования:</h4>
-                  
+
                   {loadingSessions ? (
                     <div className="flex items-center justify-center py-8">
                       <div className="w-10 h-10 border-4 border-t-blue-500 border-blue-500/20 rounded-full animate-spin"></div>
@@ -1029,7 +1029,7 @@ function TestResultsAdmin() {
                   ) : allSessions.length > 0 ? (
                     <div className="space-y-3 mt-4">
                       {allSessions.map(session => (
-                        <div 
+                        <div
                           key={session.id}
                           className="bg-[#2a2a2a] p-4 rounded-lg border border-[#3d3d3d] hover:border-blue-500 transition-all cursor-pointer"
                           onClick={() => navigate(`/admin/session/${session.id}`)}
@@ -1037,7 +1037,7 @@ function TestResultsAdmin() {
                           <div className="flex justify-between items-center">
                             <div>
                               <h5 className="font-medium">
-                                {session.employee ? 
+                                {session.employee ?
                                   `${session.employee.first_name || ''}`.trim() :
                                   'Неизвестный кандидат'}
                               </h5>
@@ -1056,14 +1056,14 @@ function TestResultsAdmin() {
                     </div>
                   )}
                 </div>
-                
+
                 <div className="flex justify-center">
-            <button 
-                    onClick={() => loadAllSessions()} 
+                  <button
+                    onClick={() => loadAllSessions()}
                     className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
+                  >
                     Обновить список сессий
-            </button>
+                  </button>
                 </div>
               </>
             )}
@@ -1077,547 +1077,547 @@ function TestResultsAdmin() {
           <>
             {/* Основной контент, показываем только если есть реальные данные */}
             {testResults && dialogues.length > 0 ? (
-            <div className="min-h-screen bg-[#1a1a1a] text-gray-100 p-6">
+              <div className="min-h-screen bg-[#1a1a1a] text-gray-100 p-6">
                 {/* Удаляем дублирующийся заголовок, оставляем только информацию о кандидате */}
                 <div className="mb-8">
-                <motion.div
-                  initial={{ opacity: 0, y: -20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.5 }}
-                  className="flex items-center justify-between"
-                >
-                  <p className="text-gray-400">
-                    <span className="font-medium text-white">Кандидат:</span> {testResults.candidateName || 'Неизвестный кандидат'} | 
-                    <span className="font-medium text-white ml-2">Дата:</span> {testResults.date || 'Не указана'}
-                  </p>
-                  
-                  {sessionId && (
-                    <button 
-                      onClick={async () => {
-                        if (!sessionId) {
-                          alert('ID сессии не найден');
-                          return;
-                        }
+                  <motion.div
+                    initial={{ opacity: 0, y: -20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.5 }}
+                    className="flex items-center justify-between"
+                  >
+                    <p className="text-gray-400">
+                      <span className="font-medium text-white">Кандидат:</span> {testResults.candidateName || 'Неизвестный кандидат'} |
+                      <span className="font-medium text-white ml-2">Дата:</span> {testResults.date || 'Не указана'}
+                    </p>
 
-                        // Устанавливаем флаг вычисления
-                        setCalculatingResults(true);
-                        
-                        // Проверяем, есть ли ID сотрудника в состоянии
-                        let currentEmployeeId = employeeId;
-                        console.log('[TestResultsAdmin] ID сотрудника в состоянии:', currentEmployeeId);
-                        
-                        // Если ID сотрудника не найден, пробуем получить его из API
-                        if (!currentEmployeeId) {
-                          try {
-                            console.log('[TestResultsAdmin] Пробуем получить ID сотрудника из API для сессии:', sessionId);
-                            const sessionResponse = await fetch(`/api/test-sessions/${sessionId}`);
-                            
-                            if (sessionResponse.ok) {
-                              const sessionData = await sessionResponse.json();
-                              if (sessionData.session) {
-                                if (sessionData.session.employee_id) {
-                                  currentEmployeeId = sessionData.session.employee_id;
-                                  console.log('[TestResultsAdmin] Получен ID сотрудника из API:', currentEmployeeId);
-                                } else if (sessionData.session.employee && sessionData.session.employee.id) {
-                                  currentEmployeeId = sessionData.session.employee.id;
-                                  console.log('[TestResultsAdmin] Получен ID сотрудника из вложенного объекта employee:', currentEmployeeId);
+                    {sessionId && (
+                      <button
+                        onClick={async () => {
+                          if (!sessionId) {
+                            alert('ID сессии не найден');
+                            return;
+                          }
+
+                          // Устанавливаем флаг вычисления
+                          setCalculatingResults(true);
+
+                          // Проверяем, есть ли ID сотрудника в состоянии
+                          let currentEmployeeId = employeeId;
+                          console.log('[TestResultsAdmin] ID сотрудника в состоянии:', currentEmployeeId);
+
+                          // Если ID сотрудника не найден, пробуем получить его из API
+                          if (!currentEmployeeId) {
+                            try {
+                              console.log('[TestResultsAdmin] Пробуем получить ID сотрудника из API для сессии:', sessionId);
+                              const sessionResponse = await fetch(`/api/test-sessions/${sessionId}`);
+
+                              if (sessionResponse.ok) {
+                                const sessionData = await sessionResponse.json();
+                                if (sessionData.session) {
+                                  if (sessionData.session.employee_id) {
+                                    currentEmployeeId = sessionData.session.employee_id;
+                                    console.log('[TestResultsAdmin] Получен ID сотрудника из API:', currentEmployeeId);
+                                  } else if (sessionData.session.employee && sessionData.session.employee.id) {
+                                    currentEmployeeId = sessionData.session.employee.id;
+                                    console.log('[TestResultsAdmin] Получен ID сотрудника из вложенного объекта employee:', currentEmployeeId);
+                                  }
                                 }
                               }
+                            } catch (error) {
+                              console.error('[TestResultsAdmin] Ошибка при получении ID сотрудника:', error);
                             }
-                          } catch (error) {
-                            console.error('[TestResultsAdmin] Ошибка при получении ID сотрудника:', error);
                           }
-                        }
-                        
-                        // Если ID сотрудника всё еще не найден, показываем предупреждение
-                        if (!currentEmployeeId) {
-                          console.error('[TestResultsAdmin] ID сотрудника не найден. Невозможно выполнить подсчет результатов');
-                          alert('Ошибка: ID сотрудника не найден. Невозможно выполнить подсчет результатов.');
-                          setCalculatingResults(false);
-                          return;
-                        }
-                        
-                        // Вызываем API для анализа и сохранения результатов
-                        fetch('/api/test-results', {
-                          method: 'POST',
-                          headers: {
-                            'Content-Type': 'application/json',
-                          },
-                          body: JSON.stringify({
-                            sessionId: sessionId,
-                            employeeId: currentEmployeeId,
-                            analyzeNow: true
-                          }),
-                        })
-                        .then(response => {
-                          if (!response.ok) {
-                            throw new Error(`Ошибка: ${response.status}`);
+
+                          // Если ID сотрудника всё еще не найден, показываем предупреждение
+                          if (!currentEmployeeId) {
+                            console.error('[TestResultsAdmin] ID сотрудника не найден. Невозможно выполнить подсчет результатов');
+                            alert('Ошибка: ID сотрудника не найден. Невозможно выполнить подсчет результатов.');
+                            setCalculatingResults(false);
+                            return;
                           }
-                          return response.json();
-                        })
-                        .then(data => {
-                          alert('Результаты успешно подсчитаны!');
-                          console.log('Результаты анализа:', data);
-                          // Перезагружаем данные
-                          loadData();
-                        })
-                        .catch(error => {
-                          alert(`Ошибка при подсчете результатов: ${error.message}`);
-                          console.error('Ошибка при подсчете результатов:', error);
-                        })
-                        .finally(() => {
-                          // Снимаем флаг вычисления
-                          setCalculatingResults(false);
-                        });
-                      }}
-                      disabled={calculatingResults}
-                      className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-lg text-white font-semibold hover:opacity-90 transition-opacity disabled:opacity-75"
-                    >
-                      {calculatingResults ? (
-                        <>
-                          <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                          <span>Подсчет...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Brain className="w-5 h-5" />
-                          <span>Посчитать результат</span>
-                        </>
-                      )}
-                    </button>
-                  )}
-                </motion.div>
-              </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Overall Score Card */}
-                <motion.div 
-                  className="lg:col-span-3 bg-[#2d2d2d] rounded-2xl p-6 border border-[#3d3d3d]"
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ duration: 0.5 }}
-                >
-                  <div className="flex flex-col items-center justify-center">
-                    <h2 className="text-xl font-semibold text-gray-300 mb-2">Общая оценка</h2>
-                    <div>
-                      <span className={`text-5xl font-bold ${getScoreColorClass(testResults.overallScore)}`}>
-                          {testResults.overallScore.toFixed(1)}
-                      </span>
-                      <span className="text-2xl text-gray-400">/ 5</span>
-                    </div>
-                    <div className="flex items-center gap-1 mb-4">
-                      {renderStars(Math.round(testResults.overallScore))}
-                    </div>
-                    <div className="w-full max-w-md h-3 bg-[#1a1a1a] rounded-full overflow-hidden">
-                      <motion.div 
-                        className="h-full bg-gradient-to-r from-pink-500 to-purple-500"
-                        initial={{ width: 0 }}
-                        animate={{ width: `${(testResults.overallScore / 5) * 100}%` }}
-                        transition={{ duration: 1, delay: 0.5 }}
-                      />
-                    </div>
-                  </div>
-                </motion.div>
-
-                {/* Detailed Parameters */}
-                <motion.div 
-                  className="lg:col-span-2 bg-[#2d2d2d] rounded-2xl p-6 border border-[#3d3d3d]"
-                  variants={containerVariants}
-                  initial="hidden"
-                  animate="visible"
-                >
-                  <h3 className="text-xl font-semibold mb-6">Детальные результаты</h3>
-                  
-                  <div className="space-y-6">
-                    {testResults.parameters.map((param, index) => (
-                      <motion.div 
-                        key={index}
-                        variants={itemVariants}
-                        className="bg-[#1a1a1a] rounded-lg p-4 border border-[#3d3d3d]"
+                          // Вызываем API для анализа и сохранения результатов
+                          fetch('/api/test-results', {
+                            method: 'POST',
+                            headers: {
+                              'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                              sessionId: sessionId,
+                              employeeId: currentEmployeeId,
+                              analyzeNow: true
+                            }),
+                          })
+                            .then(response => {
+                              if (!response.ok) {
+                                throw new Error(`Ошибка: ${response.status}`);
+                              }
+                              return response.json();
+                            })
+                            .then(data => {
+                              alert('Результаты успешно подсчитаны!');
+                              console.log('Результаты анализа:', data);
+                              // Перезагружаем данные
+                              loadData();
+                            })
+                            .catch(error => {
+                              alert(`Ошибка при подсчете результатов: ${error.message}`);
+                              console.error('Ошибка при подсчете результатов:', error);
+                            })
+                            .finally(() => {
+                              // Снимаем флаг вычисления
+                              setCalculatingResults(false);
+                            });
+                        }}
+                        disabled={calculatingResults}
+                        className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-lg text-white font-semibold hover:opacity-90 transition-opacity disabled:opacity-75"
                       >
-                        <div className="flex items-start gap-4">
-                          <div className={`p-3 rounded-full ${getParameterBgClass(param.color)}`}>
-                            {param.icon}
-                          </div>
-                          <div className="flex-1">
-                            <div className="flex items-center justify-between mb-2">
-                              <h4 className="text-lg font-medium">{param.name}</h4>
-                              <div className="flex items-center gap-1">
-                                {renderStars(param.score)}
-                              </div>
+                        {calculatingResults ? (
+                          <>
+                            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                            <span>Подсчет...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Brain className="w-5 h-5" />
+                            <span>Посчитать результат</span>
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </motion.div>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  {/* Overall Score Card */}
+                  <motion.div
+                    className="lg:col-span-3 bg-[#2d2d2d] rounded-2xl p-6 border border-[#3d3d3d]"
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ duration: 0.5 }}
+                  >
+                    <div className="flex flex-col items-center justify-center">
+                      <h2 className="text-xl font-semibold text-gray-300 mb-2">Общая оценка</h2>
+                      <div>
+                        <span className={`text-5xl font-bold ${getScoreColorClass(testResults.overallScore)}`}>
+                          {testResults.overallScore.toFixed(1)}
+                        </span>
+                        <span className="text-2xl text-gray-400">/ 5</span>
+                      </div>
+                      <div className="flex items-center gap-1 mb-4">
+                        {renderStars(Math.round(testResults.overallScore))}
+                      </div>
+                      <div className="w-full max-w-md h-3 bg-[#1a1a1a] rounded-full overflow-hidden">
+                        <motion.div
+                          className="h-full bg-gradient-to-r from-pink-500 to-purple-500"
+                          initial={{ width: 0 }}
+                          animate={{ width: `${(testResults.overallScore / 5) * 100}%` }}
+                          transition={{ duration: 1, delay: 0.5 }}
+                        />
+                      </div>
+                    </div>
+                  </motion.div>
+
+                  {/* Detailed Parameters */}
+                  <motion.div
+                    className="lg:col-span-2 bg-[#2d2d2d] rounded-2xl p-6 border border-[#3d3d3d]"
+                    variants={containerVariants}
+                    initial="hidden"
+                    animate="visible"
+                  >
+                    <h3 className="text-xl font-semibold mb-6">Детальные результаты</h3>
+
+                    <div className="space-y-6">
+                      {testResults.parameters.map((param, index) => (
+                        <motion.div
+                          key={index}
+                          variants={itemVariants}
+                          className="bg-[#1a1a1a] rounded-lg p-4 border border-[#3d3d3d]"
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className={`p-2 rounded-full min-w-[36px] flex items-center justify-center ${getParameterBgClass(param.color)}`}>
+                              {param.icon}
                             </div>
-                            <p className="text-gray-400">{param.comment}</p>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex flex-col mb-2">
+                                <h4 className="text-lg font-medium w-full">{param.name}</h4>
+                                <div className="flex items-center gap-1 shrink-0 mt-1">
+                                  {renderStars(param.score)}
+                                </div>
+                              </div>
+                              <p className="text-gray-400 break-words whitespace-normal overflow-visible">{param.comment}</p>
                               <div className="mt-2 text-right">
                                 <span className={`${getScoreColorClass(param.score)} font-semibold`}>{param.score.toFixed(1)}</span>
                                 <span className="text-gray-400 text-sm"> / 5</span>
                               </div>
+                            </div>
                           </div>
-                        </div>
-                      </motion.div>
-                    ))}
-                  </div>
-                </motion.div>
-
-                {/* Pricing Evaluation */}
-                <motion.div 
-                  className="bg-[#2d2d2d] rounded-2xl p-6 border border-[#3d3d3d]"
-                  variants={fadeInVariants}
-                  initial="hidden"
-                  animate="visible"
-                >
-                  <h3 className="text-xl font-semibold mb-6 flex items-center gap-2">
-                    <DollarSign className="w-5 h-5 text-pink-500" />
-                    Ценовая политика
-                  </h3>
-                  
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-gray-400">Оценка:</span>
-                      <div className="flex items-center gap-2">
-                        <span className={`text-xl font-bold ${getScoreColorClass(testResults.pricingEvaluation.score)}`}>
-                          {testResults.pricingEvaluation.score.toFixed(1)}
-                        </span>
-                        <span className="text-sm text-gray-400">/ 5</span>
-                      </div>
+                        </motion.div>
+                      ))}
                     </div>
-                    
-                    <div className="bg-[#1a1a1a] rounded-lg p-4 border border-[#3d3d3d]">
+                  </motion.div>
+
+                  {/* Pricing Evaluation */}
+                  <motion.div
+                    className="bg-[#2d2d2d] rounded-2xl p-6 border border-[#3d3d3d]"
+                    variants={fadeInVariants}
+                    initial="hidden"
+                    animate="visible"
+                  >
+                    <h3 className="text-xl font-semibold mb-6 flex items-center gap-2">
+                      <DollarSign className="w-5 h-5 text-pink-500" />
+                      Ценовая политика
+                    </h3>
+
+                    <div className="space-y-4">
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-gray-400">Уровень цен:</span>
-                        <span className="font-medium text-blue-400">{testResults.pricingEvaluation.level}</span>
+                        <span className="text-gray-400">Оценка:</span>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-xl font-bold ${getScoreColorClass(testResults.pricingEvaluation.score)}`}>
+                            {testResults.pricingEvaluation.score.toFixed(1)}
+                          </span>
+                          <span className="text-sm text-gray-400">/ 5</span>
+                        </div>
                       </div>
-                      <p className="text-sm text-gray-300 mt-2">{testResults.pricingEvaluation.details}</p>
-                    </div>
 
-                    <div>
-                      <h4 className="text-sm font-medium text-green-400 mb-2 flex items-center gap-1">
-                        <CheckCircle className="w-4 h-4" />
-                        Сильные стороны
-                      </h4>
-                      <ul className="text-sm space-y-1">
-                        {testResults.pricingEvaluation.strengths.map((strength, idx) => (
-                          <li key={idx} className="text-gray-300 flex items-start gap-2">
-                            <span className="text-green-500 mt-1">•</span>
-                            {strength}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
+                      <div className="bg-[#1a1a1a] rounded-lg p-4 border border-[#3d3d3d]">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-gray-400">Уровень цен:</span>
+                          <span className="font-medium text-blue-400">{testResults.pricingEvaluation.level}</span>
+                        </div>
+                        <p className="text-sm text-gray-300 mt-2">{testResults.pricingEvaluation.details}</p>
+                      </div>
 
-                    {testResults.pricingEvaluation.weaknesses.length > 0 && (
                       <div>
-                        <h4 className="text-sm font-medium text-red-400 mb-2 flex items-center gap-1">
-                          <XCircle className="w-4 h-4" />
-                          Требуют улучшения
+                        <h4 className="text-sm font-medium text-green-400 mb-2 flex items-center gap-1">
+                          <CheckCircle className="w-4 h-4" />
+                          Сильные стороны
                         </h4>
                         <ul className="text-sm space-y-1">
-                          {testResults.pricingEvaluation.weaknesses.map((weakness, idx) => (
+                          {testResults.pricingEvaluation.strengths.map((strength, idx) => (
                             <li key={idx} className="text-gray-300 flex items-start gap-2">
-                              <span className="text-red-500 mt-1">•</span>
-                              {weakness}
+                              <span className="text-green-500 mt-1">•</span>
+                              {strength}
                             </li>
                           ))}
                         </ul>
                       </div>
-                    )}
-                  </div>
-                </motion.div>
 
-                {/* Sales Performance Section */}
-                <motion.div 
-                  className="lg:col-span-3 bg-[#2d2d2d] rounded-2xl p-6 border border-[#3d3d3d] mb-6"
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.5, delay: 0.3 }}
-                >
-                  <h2 className="text-xl font-semibold mb-6 flex items-center gap-2">
-                    <ShoppingCart className="w-6 h-6 text-pink-500" />
-                    Эффективность продаж
-                  </h2>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    {/* Introduction Section */}
-                    <div className="bg-[#1a1a1a] rounded-xl p-5 border border-[#3d3d3d]">
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-2">
-                          <Users className="w-5 h-5 text-blue-500" />
-                          <h3 className="font-semibold">Знакомство</h3>
-                         </div>
-                        <div className={`px-2 py-1 rounded-full text-sm font-medium ${getScoreColorClass(testResults.salesPerformance.introduction.score)}`}>
-                          {testResults.salesPerformance.introduction.score.toFixed(1)}
-                        </div>
-                      </div>
-
-                      <div className="mb-4">
-                        <div className="flex justify-between text-sm mb-1">
-                          <span className="text-gray-400">Конверсия</span>
-                          <span className="font-medium">{testResults.salesPerformance.introduction.conversionRate}%</span>
-                        </div>
-                        <div className="h-2 bg-[#2d2d2d] rounded-full overflow-hidden">
-                          <motion.div 
-                            className={`h-full ${getProgressBarColor(testResults.salesPerformance.introduction.conversionRate)}`}
-                            initial={{ width: 0 }}
-                            animate={{ width: `${testResults.salesPerformance.introduction.conversionRate}%` }}
-                            transition={{ duration: 1, delay: 0.7 }}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="space-y-3">
+                      {testResults.pricingEvaluation.weaknesses.length > 0 && (
                         <div>
-                          <h4 className="text-sm font-medium text-green-400 mb-2 flex items-center gap-1">
-                            <CheckCircle className="w-4 h-4" />
-                            Сильные стороны
+                          <h4 className="text-sm font-medium text-red-400 mb-2 flex items-center gap-1">
+                            <XCircle className="w-4 h-4" />
+                            Требуют улучшения
                           </h4>
                           <ul className="text-sm space-y-1">
-                            {testResults.salesPerformance.introduction.strengths.map((strength, idx) => (
+                            {testResults.pricingEvaluation.weaknesses.map((weakness, idx) => (
                               <li key={idx} className="text-gray-300 flex items-start gap-2">
-                                <span className="text-green-500 mt-1">•</span>
-                                {strength}
+                                <span className="text-red-500 mt-1">•</span>
+                                {weakness}
                               </li>
                             ))}
                           </ul>
                         </div>
+                      )}
+                    </div>
+                  </motion.div>
 
-                        {testResults.salesPerformance.introduction.weaknesses.length > 0 && (
+                  {/* Sales Performance Section */}
+                  <motion.div
+                    className="lg:col-span-3 bg-[#2d2d2d] rounded-2xl p-6 border border-[#3d3d3d] mb-6"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.5, delay: 0.3 }}
+                  >
+                    <h2 className="text-xl font-semibold mb-6 flex items-center gap-2">
+                      <ShoppingCart className="w-6 h-6 text-pink-500" />
+                      Эффективность продаж
+                    </h2>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      {/* Introduction Section */}
+                      <div className="bg-[#1a1a1a] rounded-xl p-5 border border-[#3d3d3d]">
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="flex items-center gap-2">
+                            <Users className="w-5 h-5 text-blue-500" />
+                            <h3 className="font-semibold">Знакомство</h3>
+                          </div>
+                          <div className={`px-2 py-1 rounded-full text-sm font-medium ${getScoreColorClass(testResults.salesPerformance.introduction.score)}`}>
+                            {testResults.salesPerformance.introduction.score.toFixed(1)}
+                          </div>
+                        </div>
+
+                        <div className="mb-4">
+                          <div className="flex justify-between text-sm mb-1">
+                            <span className="text-gray-400">Конверсия</span>
+                            <span className="font-medium">{testResults.salesPerformance.introduction.conversionRate}%</span>
+                          </div>
+                          <div className="h-2 bg-[#2d2d2d] rounded-full overflow-hidden">
+                            <motion.div
+                              className={`h-full ${getProgressBarColor(testResults.salesPerformance.introduction.conversionRate)}`}
+                              initial={{ width: 0 }}
+                              animate={{ width: `${testResults.salesPerformance.introduction.conversionRate}%` }}
+                              transition={{ duration: 1, delay: 0.7 }}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-3">
                           <div>
-                            <h4 className="text-sm font-medium text-red-400 mb-2 flex items-center gap-1">
-                              <XCircle className="w-4 h-4" />
-                              Области для улучшения
+                            <h4 className="text-sm font-medium text-green-400 mb-2 flex items-center gap-1">
+                              <CheckCircle className="w-4 h-4" />
+                              Сильные стороны
                             </h4>
                             <ul className="text-sm space-y-1">
-                              {testResults.salesPerformance.introduction.weaknesses.map((weakness, idx) => (
+                              {testResults.salesPerformance.introduction.strengths.map((strength, idx) => (
                                 <li key={idx} className="text-gray-300 flex items-start gap-2">
-                                  <span className="text-red-500 mt-1">•</span>
-                                  {weakness}
+                                  <span className="text-green-500 mt-1">•</span>
+                                  {strength}
                                 </li>
                               ))}
                             </ul>
                           </div>
-                        )}
-                      </div>
-                    </div>
 
-                    {/* Warmup Section */}
-                    <div className="bg-[#1a1a1a] rounded-xl p-5 border border-[#3d3d3d]">
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-2">
-                          <Flame className="w-5 h-5 text-orange-500" />
-                          <h3 className="font-semibold">Прогрев</h3>
-                        </div>
-                        <div className={`px-2 py-1 rounded-full text-sm font-medium ${getScoreColorClass(testResults.salesPerformance.warmup.score)}`}>
-                          {testResults.salesPerformance.warmup.score.toFixed(1)}
-                        </div>
-                      </div>
-
-                      <div className="mb-4">
-                        <div className="flex justify-between text-sm mb-1">
-                          <span className="text-gray-400">Конверсия</span>
-                          <span className="font-medium">{testResults.salesPerformance.warmup.conversionRate}%</span>
-                        </div>
-                        <div className="h-2 bg-[#2d2d2d] rounded-full overflow-hidden">
-                          <motion.div 
-                            className={`h-full ${getProgressBarColor(testResults.salesPerformance.warmup.conversionRate)}`}
-                            initial={{ width: 0 }}
-                            animate={{ width: `${testResults.salesPerformance.warmup.conversionRate}%` }}
-                            transition={{ duration: 1, delay: 0.8 }}
-                          />
+                          {testResults.salesPerformance.introduction.weaknesses.length > 0 && (
+                            <div>
+                              <h4 className="text-sm font-medium text-red-400 mb-2 flex items-center gap-1">
+                                <XCircle className="w-4 h-4" />
+                                Области для улучшения
+                              </h4>
+                              <ul className="text-sm space-y-1">
+                                {testResults.salesPerformance.introduction.weaknesses.map((weakness, idx) => (
+                                  <li key={idx} className="text-gray-300 flex items-start gap-2">
+                                    <span className="text-red-500 mt-1">•</span>
+                                    {weakness}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
                         </div>
                       </div>
 
-                      <div className="space-y-3">
-                        <div>
-                          <h4 className="text-sm font-medium text-green-400 mb-2 flex items-center gap-1">
-                            <CheckCircle className="w-4 h-4" />
-                            Сильные стороны
-                          </h4>
-                          <ul className="text-sm space-y-1">
-                            {testResults.salesPerformance.warmup.strengths.map((strength, idx) => (
-                              <li key={idx} className="text-gray-300 flex items-start gap-2">
-                                <span className="text-green-500 mt-1">•</span>
-                                {strength}
-                              </li>
-                            ))}
-                           </ul>
+                      {/* Warmup Section */}
+                      <div className="bg-[#1a1a1a] rounded-xl p-5 border border-[#3d3d3d]">
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="flex items-center gap-2">
+                            <Flame className="w-5 h-5 text-orange-500" />
+                            <h3 className="font-semibold">Прогрев</h3>
+                          </div>
+                          <div className={`px-2 py-1 rounded-full text-sm font-medium ${getScoreColorClass(testResults.salesPerformance.warmup.score)}`}>
+                            {testResults.salesPerformance.warmup.score.toFixed(1)}
+                          </div>
                         </div>
 
-                        {testResults.salesPerformance.warmup.weaknesses.length > 0 && (
+                        <div className="mb-4">
+                          <div className="flex justify-between text-sm mb-1">
+                            <span className="text-gray-400">Конверсия</span>
+                            <span className="font-medium">{testResults.salesPerformance.warmup.conversionRate}%</span>
+                          </div>
+                          <div className="h-2 bg-[#2d2d2d] rounded-full overflow-hidden">
+                            <motion.div
+                              className={`h-full ${getProgressBarColor(testResults.salesPerformance.warmup.conversionRate)}`}
+                              initial={{ width: 0 }}
+                              animate={{ width: `${testResults.salesPerformance.warmup.conversionRate}%` }}
+                              transition={{ duration: 1, delay: 0.8 }}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-3">
                           <div>
-                            <h4 className="text-sm font-medium text-red-400 mb-2 flex items-center gap-1">
-                              <XCircle className="w-4 h-4" />
-                              Области для улучшения
+                            <h4 className="text-sm font-medium text-green-400 mb-2 flex items-center gap-1">
+                              <CheckCircle className="w-4 h-4" />
+                              Сильные стороны
                             </h4>
                             <ul className="text-sm space-y-1">
-                              {testResults.salesPerformance.warmup.weaknesses.map((weakness, idx) => (
+                              {testResults.salesPerformance.warmup.strengths.map((strength, idx) => (
                                 <li key={idx} className="text-gray-300 flex items-start gap-2">
-                                  <span className="text-red-500 mt-1">•</span>
-                                  {weakness}
+                                  <span className="text-green-500 mt-1">•</span>
+                                  {strength}
                                 </li>
                               ))}
                             </ul>
                           </div>
-                        )}
-                      </div>
-                    </div>
 
-                    {/* Sales Section */}
-                    <div className="bg-[#1a1a1a] rounded-xl p-5 border border-[#3d3d3d]">
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-2">
-                          <DollarSign className="w-5 h-5 text-green-500" />
-                          <h3 className="font-semibold">Продажи</h3>
-                        </div>
-                        <div className={`px-2 py-1 rounded-full text-sm font-medium ${getScoreColorClass(testResults.salesPerformance.sales.score)}`}>
-                          {testResults.salesPerformance.sales.score.toFixed(1)}
-                        </div>
-                      </div>
-
-                      <div className="mb-4">
-                        <div className="flex justify-between text-sm mb-1">
-                          <span className="text-gray-400">Конверсия</span>
-                          <span className="font-medium">{testResults.salesPerformance.sales.conversionRate}%</span>
-                        </div>
-                        <div className="h-2 bg-[#2d2d2d] rounded-full overflow-hidden">
-                          <motion.div 
-                            className={`h-full ${getProgressBarColor(testResults.salesPerformance.sales.conversionRate)}`}
-                            initial={{ width: 0 }}
-                            animate={{ width: `${testResults.salesPerformance.sales.conversionRate}%` }}
-                            transition={{ duration: 1, delay: 0.9 }}
-                          />
+                          {testResults.salesPerformance.warmup.weaknesses.length > 0 && (
+                            <div>
+                              <h4 className="text-sm font-medium text-red-400 mb-2 flex items-center gap-1">
+                                <XCircle className="w-4 h-4" />
+                                Области для улучшения
+                              </h4>
+                              <ul className="text-sm space-y-1">
+                                {testResults.salesPerformance.warmup.weaknesses.map((weakness, idx) => (
+                                  <li key={idx} className="text-gray-300 flex items-start gap-2">
+                                    <span className="text-red-500 mt-1">•</span>
+                                    {weakness}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
                         </div>
                       </div>
 
-                      <div className="space-y-3">
-                        <div>
-                          <h4 className="text-sm font-medium text-green-400 mb-2 flex items-center gap-1">
-                            <CheckCircle className="w-4 h-4" />
-                            Сильные стороны
-                          </h4>
-                          <ul className="text-sm space-y-1">
-                            {testResults.salesPerformance.sales.strengths.map((strength, idx) => (
-                              <li key={idx} className="text-gray-300 flex items-start gap-2">
-                                <span className="text-green-500 mt-1">•</span>
-                                {strength}
-                              </li>
-                            ))}
-                          </ul>
+                      {/* Sales Section */}
+                      <div className="bg-[#1a1a1a] rounded-xl p-5 border border-[#3d3d3d]">
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="flex items-center gap-2">
+                            <DollarSign className="w-5 h-5 text-green-500" />
+                            <h3 className="font-semibold">Продажи</h3>
+                          </div>
+                          <div className={`px-2 py-1 rounded-full text-sm font-medium ${getScoreColorClass(testResults.salesPerformance.sales.score)}`}>
+                            {testResults.salesPerformance.sales.score.toFixed(1)}
+                          </div>
                         </div>
 
-                        {testResults.salesPerformance.sales.weaknesses.length > 0 && (
+                        <div className="mb-4">
+                          <div className="flex justify-between text-sm mb-1">
+                            <span className="text-gray-400">Конверсия</span>
+                            <span className="font-medium">{testResults.salesPerformance.sales.conversionRate}%</span>
+                          </div>
+                          <div className="h-2 bg-[#2d2d2d] rounded-full overflow-hidden">
+                            <motion.div
+                              className={`h-full ${getProgressBarColor(testResults.salesPerformance.sales.conversionRate)}`}
+                              initial={{ width: 0 }}
+                              animate={{ width: `${testResults.salesPerformance.sales.conversionRate}%` }}
+                              transition={{ duration: 1, delay: 0.9 }}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-3">
                           <div>
-                            <h4 className="text-sm font-medium text-red-400 mb-2 flex items-center gap-1">
-                              <XCircle className="w-4 h-4" />
-                              Области для улучшения
+                            <h4 className="text-sm font-medium text-green-400 mb-2 flex items-center gap-1">
+                              <CheckCircle className="w-4 h-4" />
+                              Сильные стороны
                             </h4>
                             <ul className="text-sm space-y-1">
-                              {testResults.salesPerformance.sales.weaknesses.map((weakness, idx) => (
+                              {testResults.salesPerformance.sales.strengths.map((strength, idx) => (
                                 <li key={idx} className="text-gray-300 flex items-start gap-2">
-                                  <span className="text-red-500 mt-1">•</span>
-                                  {weakness}
+                                  <span className="text-green-500 mt-1">•</span>
+                                  {strength}
                                 </li>
                               ))}
                             </ul>
                           </div>
-                        )}
+
+                          {testResults.salesPerformance.sales.weaknesses.length > 0 && (
+                            <div>
+                              <h4 className="text-sm font-medium text-red-400 mb-2 flex items-center gap-1">
+                                <XCircle className="w-4 h-4" />
+                                Области для улучшения
+                              </h4>
+                              <ul className="text-sm space-y-1">
+                                {testResults.salesPerformance.sales.weaknesses.map((weakness, idx) => (
+                                  <li key={idx} className="text-gray-300 flex items-start gap-2">
+                                    <span className="text-red-500 mt-1">•</span>
+                                    {weakness}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </motion.div>
+                  </motion.div>
 
-                {/* Recommendations */}
-                <motion.div 
-                  className="bg-[#2d2d2d] rounded-2xl p-6 border border-[#3d3d3d]"
-                  variants={fadeInVariants}
-                  initial="hidden"
-                  animate="visible"
-                >
+                  {/* Recommendations */}
+                  <motion.div
+                    className="bg-[#2d2d2d] rounded-2xl p-6 border border-[#3d3d3d]"
+                    variants={fadeInVariants}
+                    initial="hidden"
+                    animate="visible"
+                  >
                     <h3 className="text-xl font-semibold mb-6">Рекомендации и заключение</h3>
-                  
-                  <div className="space-y-4">
-                    {testResults.recommendations.map((rec, index) => (
-                      <div key={index} className="flex items-start gap-3">
-                        <div className="w-6 h-6 rounded-full bg-gradient-to-r from-pink-500 to-purple-500 flex items-center justify-center flex-shrink-0">
-                          <span className="text-sm font-bold">{index + 1}</span>
-                        </div>
-                        <p className="text-gray-300">{rec}</p>
-                      </div>
-                    ))}
-                  </div>
 
-                  <div className="mt-8 space-y-4">
-                    <h4 className="text-lg font-medium">Действия</h4>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <button className="flex items-center justify-center gap-2 p-3 bg-[#1a1a1a] rounded-lg border border-[#3d3d3d] hover:bg-[#3d3d3d] transition-colors">
-                        <Download className="w-5 h-5 text-blue-400" />
-                        <span>Скачать отчет</span>
-                      </button>
-                      <button className="flex items-center justify-center gap-2 p-3 bg-[#1a1a1a] rounded-lg border border-[#3d3d3d] hover:bg-[#3d3d3d] transition-colors">
-                        <Share2 className="w-5 h-5 text-green-400" />
-                        <span>Поделиться</span>
-                      </button>
-                      <button className="flex items-center justify-center gap-2 p-3 bg-[#1a1a1a] rounded-lg border border-[#3d3d3d] hover:bg-[#3d3d3d] transition-colors">
-                        <Printer className="w-5 h-5 text-purple-400" />
-                        <span>Распечатать результаты</span>
-                      </button>
-                    </div>
-                  </div>
-                </motion.div>
-
-                {/* Dialogue History */}
-                <motion.div 
-                  className="lg:col-span-2 bg-[#2d2d2d] rounded-2xl p-6 border border-[#3d3d3d]"
-                  variants={fadeInVariants}
-                  initial="hidden"
-                  animate="visible"
-                >
-                  <h3 className="text-xl font-semibold mb-6 flex items-center gap-2">
-                    <MessageCircle className="w-5 h-5 text-purple-500" />
-                    История диалогов
-                  </h3>
-
-                  {dialogues.length > 0 ? (
-                    <div className="space-y-6">
-                      {/* Dialog List */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      {dialogues.map((dialogue) => (
-                        <div 
-                          key={dialogue.id} 
-                            className={`p-4 rounded-lg border ${selectedDialogue === dialogue.id ? 'bg-[#3d3d3d] border-purple-500' : 'bg-[#1a1a1a] border-[#3d3d3d] hover:bg-[#262626] hover:border-[#4d4d4d]'} cursor-pointer transition-colors`}
-                            onClick={() => setSelectedDialogue(dialogue.id)}
-                          >
-                            <div className="flex justify-between items-start mb-3">
-                                <h4 className="font-medium">{dialogue.title}</h4>
-                              <span className="text-xs px-2 py-1 rounded-full bg-[#2d2d2d] text-gray-300">{dialogue.date}</span>
-                                </div>
-                            <div className="flex items-center justify-between text-sm text-gray-400">
-                                {dialogue.messages && dialogue.messages.length > 0 ? (
-                                <span className="flex items-center gap-1">
-                                  <MessageCircle className="w-4 h-4" />
-                                  {dialogue.messages.length} сообщений
-                                </span>
-                              ) : (
-                                <span className="text-yellow-500 flex items-center gap-1">
-                                  <AlertCircle className="w-4 h-4" />
-                                  Нет сообщений
-                                </span>
-                              )}
-                                </div>
-                              </div>
-                        ))}
+                    <div className="space-y-4">
+                      {testResults.recommendations.map((rec, index) => (
+                        <div key={index} className="flex items-start gap-3">
+                          <div className="w-6 h-6 rounded-full bg-gradient-to-r from-pink-500 to-purple-500 flex items-center justify-center flex-shrink-0">
+                            <span className="text-sm font-bold">{index + 1}</span>
                           </div>
+                          <p className="text-gray-300">{rec}</p>
+                        </div>
+                      ))}
+                    </div>
 
-                      {/* Selected Dialog */}
+                    <div className="mt-8 space-y-4">
+                      <h4 className="text-lg font-medium">Действия</h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <button className="flex items-center justify-center gap-2 p-3 bg-[#1a1a1a] rounded-lg border border-[#3d3d3d] hover:bg-[#3d3d3d] transition-colors">
+                          <Download className="w-5 h-5 text-blue-400" />
+                          <span>Скачать отчет</span>
+                        </button>
+                        <button className="flex items-center justify-center gap-2 p-3 bg-[#1a1a1a] rounded-lg border border-[#3d3d3d] hover:bg-[#3d3d3d] transition-colors">
+                          <Share2 className="w-5 h-5 text-green-400" />
+                          <span>Поделиться</span>
+                        </button>
+                        <button className="flex items-center justify-center gap-2 p-3 bg-[#1a1a1a] rounded-lg border border-[#3d3d3d] hover:bg-[#3d3d3d] transition-colors">
+                          <Printer className="w-5 h-5 text-purple-400" />
+                          <span>Распечатать результаты</span>
+                        </button>
+                      </div>
+                    </div>
+                  </motion.div>
+
+                  {/* Dialogue History */}
+                  <motion.div
+                    className="lg:col-span-2 bg-[#2d2d2d] rounded-2xl p-6 border border-[#3d3d3d]"
+                    variants={fadeInVariants}
+                    initial="hidden"
+                    animate="visible"
+                  >
+                    <h3 className="text-xl font-semibold mb-6 flex items-center gap-2">
+                      <MessageCircle className="w-5 h-5 text-purple-500" />
+                      История диалогов
+                    </h3>
+
+                    {dialogues.length > 0 ? (
+                      <div className="space-y-6">
+                        {/* Dialog List */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          {dialogues.map((dialogue) => (
+                            <div
+                              key={dialogue.id}
+                              className={`p-4 rounded-lg border ${selectedDialogue === dialogue.id ? 'bg-[#3d3d3d] border-purple-500' : 'bg-[#1a1a1a] border-[#3d3d3d] hover:bg-[#262626] hover:border-[#4d4d4d]'} cursor-pointer transition-colors`}
+                              onClick={() => setSelectedDialogue(dialogue.id)}
+                            >
+                              <div className="flex justify-between items-start mb-3">
+                                <h4 className="font-medium">{dialogue.title}</h4>
+                                <span className="text-xs px-2 py-1 rounded-full bg-[#2d2d2d] text-gray-300">{dialogue.date}</span>
+                              </div>
+                              <div className="flex items-center justify-between text-sm text-gray-400">
+                                {dialogue.messages && dialogue.messages.length > 0 ? (
+                                  <span className="flex items-center gap-1">
+                                    <MessageCircle className="w-4 h-4" />
+                                    {dialogue.messages.length} сообщений
+                                  </span>
+                                ) : (
+                                  <span className="text-yellow-500 flex items-center gap-1">
+                                    <AlertCircle className="w-4 h-4" />
+                                    Нет сообщений
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Selected Dialog */}
                         {selectedDialogue && dialogues.length > 0 && (
-                        <div className="mt-6 bg-[#1a1a1a] rounded-lg border border-[#3d3d3d] p-4">
-                          <h4 className="font-medium mb-4">
+                          <div className="mt-6 bg-[#1a1a1a] rounded-lg border border-[#3d3d3d] p-4">
+                            <h4 className="font-medium mb-4">
                               {dialogues.find(d => d.id === selectedDialogue)?.title || 'Диалог'}
-                          </h4>
-                          
-                          <div className="space-y-4">
+                            </h4>
+
+                            <div className="space-y-4">
                               {(() => {
                                 // Получаем объект диалога, чтобы не выполнять поиск многократно
                                 const currentDialogue = dialogues.find(d => d.id === selectedDialogue);
-                                
+
                                 if (!currentDialogue || !currentDialogue.messages || currentDialogue.messages.length === 0) {
                                   return (
                                     <div className="text-center py-8 text-gray-400">
@@ -1626,9 +1626,9 @@ function TestResultsAdmin() {
                                     </div>
                                   );
                                 }
-                                
+
                                 // Добавляем отладочную информацию в консоль
-                                console.log("Отображаем диалог:", 
+                                console.log("Отображаем диалог:",
                                   currentDialogue.messages.map(m => ({
                                     isOwn: m.isOwn,
                                     content: m.content,
@@ -1636,44 +1636,43 @@ function TestResultsAdmin() {
                                     hasNotBoughtTag: !m.isOwn && m.content.includes('[Not Bought]')
                                   }))
                                 );
-                                
+
                                 return currentDialogue.messages.map((message, index) => {
                                   // ВАЖНО: Всегда очищаем текст сообщения от тегов перед отображением
                                   // Эта строка критична для устранения тегов из интерфейса
                                   const displayContent = cleanMessageTags(message.content);
-                                  
+
                                   // Отладочная информация
                                   console.log(`Очистка сообщения #${index}`, {
                                     original: message.content,
                                     cleaned: displayContent,
                                     hasTags: message.content.includes('[Bought]') || message.content.includes('[Not Bought]')
                                   });
-                                  
+
                                   // Проверяем, содержит ли сообщение фото
                                   const imageMatch = displayContent.match(/\[Photo (\d+)\] \[(.*?)\]/);
-                                  
+
                                   // Информация о цене и статусе покупки
                                   const priceMatch = message.content.match(/\[Price: (.*?)\]/);
                                   const price = priceMatch ? priceMatch[1] : null;
-                                  
+
                                   // Проверяем, есть ли сообщение с тегом [Bought] после фото
                                   let isPaid = false;
                                   if (message.isOwn && imageMatch && price && price !== 'FREE') {
                                     // Используем функцию для проверки статуса покупки
                                     isPaid = checkPhotoPurchaseStatus(currentDialogue.messages, index);
                                   }
-                                  
+
                                   return (
                                     <div
                                       key={message.id}
                                       className={`flex ${message.isOwn ? 'justify-end' : 'justify-start'}`}
                                     >
                                       <div
-                                        className={`max-w-[80%] p-3 rounded-lg ${
-                                          message.isOwn
-                                            ? 'bg-purple-900 text-white rounded-tr-none' 
-                                            : 'bg-[#2d2d2d] text-gray-200 rounded-tl-none'
-                                        }`}
+                                        className={`max-w-[80%] p-3 rounded-lg ${message.isOwn
+                                          ? 'bg-purple-900 text-white rounded-tr-none'
+                                          : 'bg-[#2d2d2d] text-gray-200 rounded-tl-none'
+                                          }`}
                                       >
                                         <div className="text-xs text-gray-400 mb-1 flex justify-between">
                                           <span>{message.isOwn ? 'Соискатель' : 'AI-клиент'}</span>
@@ -1681,9 +1680,9 @@ function TestResultsAdmin() {
                                         </div>
                                         {imageMatch ? (
                                           <div className="mt-1 rounded-md overflow-hidden">
-                                            <img 
+                                            <img
                                               src={`/foto/${imageMatch[1]}.jpg`}
-                                              alt="Отправленное изображение" 
+                                              alt="Отправленное изображение"
                                               className="max-w-[200px] h-auto rounded-md border border-[#3d3d3d]"
                                             />
                                             {price && price !== 'FREE' && (
@@ -1711,15 +1710,15 @@ function TestResultsAdmin() {
                                   );
                                 });
                               })()}
-                          </div>
                             </div>
-                          )}
-                        </div>
-                  ) : (
-                    <div className="text-center py-12 bg-[#1a1a1a] rounded-lg border border-[#3d3d3d]">
-                      <AlertCircle className="w-12 h-12 mx-auto mb-4 text-yellow-500" />
-                      <h4 className="text-xl font-medium mb-2">История диалогов отсутствует</h4>
-                      <p className="text-gray-400 mb-4">Для данной сессии не найдены диалоги.</p>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-center py-12 bg-[#1a1a1a] rounded-lg border border-[#3d3d3d]">
+                        <AlertCircle className="w-12 h-12 mx-auto mb-4 text-yellow-500" />
+                        <h4 className="text-xl font-medium mb-2">История диалогов отсутствует</h4>
+                        <p className="text-gray-400 mb-4">Для данной сессии не найдены диалоги.</p>
                       </div>
                     )}
                   </motion.div>
@@ -1732,25 +1731,25 @@ function TestResultsAdmin() {
                   <h3 className="text-xl font-semibold">Предупреждение</h3>
                 </div>
                 <p className="text-gray-400 mb-6">{warning}</p>
-                
+
                 {dialogues.length > 0 && (
                   <div className="bg-[#2d2d2d] rounded-xl p-6 border border-[#3d3d3d] mt-4">
                     <h3 className="text-xl font-semibold mb-6 flex items-center gap-2">
                       <MessageCircle className="w-5 h-5 text-purple-500" />
                       История диалогов
                     </h3>
-                    
+
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {dialogues.map((dialogue) => (
-                        <div 
-                          key={dialogue.id} 
+                        <div
+                          key={dialogue.id}
                           className="bg-[#1a1a1a] p-4 rounded-lg border border-[#3d3d3d] hover:bg-[#262626] hover:border-[#4d4d4d] cursor-pointer transition-colors"
                           onClick={() => setSelectedDialogue(dialogue.id)}
                         >
                           <div className="flex justify-between items-start mb-3">
                             <h4 className="font-medium">{dialogue.title}</h4>
                             <span className="text-xs px-2 py-1 rounded-full bg-[#2d2d2d] text-gray-300">{dialogue.date}</span>
-                        </div>
+                          </div>
                           <div className="flex items-center justify-between text-sm text-gray-400">
                             <span className="flex items-center gap-1">
                               <MessageCircle className="w-4 h-4" />
@@ -1759,16 +1758,16 @@ function TestResultsAdmin() {
                           </div>
                         </div>
                       ))}
-                      </div>
                     </div>
-                  )}
+                  </div>
+                )}
               </div>
             ) : (
               <div className="text-center py-12 bg-[#1a1a1a] rounded-lg border border-[#3d3d3d]">
                 <AlertCircle className="w-12 h-12 mx-auto mb-4 text-yellow-500" />
                 <h4 className="text-xl font-medium mb-2">Данные не найдены</h4>
                 <p className="text-gray-400 mb-4">Не удалось загрузить данные для этой сессии.</p>
-            </div>
+              </div>
             )}
           </>
         )}

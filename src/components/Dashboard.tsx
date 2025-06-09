@@ -38,11 +38,11 @@ function Dashboard() {
     level: 'all',
     date: 'all',
   });
-  
+
   // Состояние для хранения данных о сотрудниках
   const [employees, setEmployees] = useState<(Employee & { telegram_tag?: string })[]>([]);
   const [loadingEmployees, setLoadingEmployees] = useState(true);
-  
+
   // Состояние для хранения данных о недавних тестированиях
   const [recentTestSessions, setRecentTestSessions] = useState<SessionDisplay[]>([]);
   const [loadingTestSessions, setLoadingTestSessions] = useState(true);
@@ -53,75 +53,75 @@ function Dashboard() {
     const fetchData = async (retryCount = 0) => {
       try {
         console.log('Попытка загрузки данных для дашборда, попытка:', retryCount + 1);
-        
+
         // Используем прямые функции из supabase.ts вместо API
         try {
           // Сначала пробуем загрузить через API
           const [employeesResponse, sessionsResponse] = await Promise.all([
             fetch('/api/employees'),
-            fetch('/api/test-sessions?limit=1000') 
+            fetch('/api/test-sessions?limit=1000')
           ]);
-          
+
           console.log('Статус ответа API для сотрудников:', employeesResponse.status);
           console.log('Статус ответа API для сессий:', sessionsResponse.status);
-          
+
           if (!employeesResponse.ok || !sessionsResponse.ok) {
             // Если API не работает, выбрасываем ошибку для перехода к прямым функциям
             throw new Error('API недоступно, переход к прямым вызовам функций');
           }
-          
+
           const [employeesData, sessionsData] = await Promise.all([
             employeesResponse.json(),
             sessionsResponse.json()
           ]);
-          
+
           // Получаем данные анкет для каждого сотрудника
           const employeesWithTelegram = await Promise.all(
             employeesData.map(async (employee: Employee) => {
               // Получаем данные анкеты для сотрудника
               const candidateForm = await getCandidateForm(employee.id);
-              console.log(`Получена анкета для сотрудника ${employee.first_name} (${employee.id}):`, 
-                candidateForm ? { 
+              console.log(`Получена анкета для сотрудника ${employee.first_name} (${employee.id}):`,
+                candidateForm ? {
                   telegram_tag: candidateForm.telegram_tag,
                   id: candidateForm.id,
-                  employee_id: candidateForm.employee_id 
+                  employee_id: candidateForm.employee_id
                 } : 'Нет анкеты');
-              
+
               // Проверяем наличие telegram_tag и не пустой ли он
               const telegramTag = candidateForm?.telegram_tag ? candidateForm.telegram_tag.trim() : null;
               console.log(`Телеграм для ${employee.first_name}:`, telegramTag || 'Не указан');
-              
+
               return {
                 ...employee,
                 telegram_tag: telegramTag
               };
             })
           );
-          
+
           setEmployees(employeesWithTelegram);
-          
+
           // Получаем данные анкет для каждой сессии
           const sessionsWithExtraData = await Promise.all(
             sessionsData.map(async (session: TestSession) => {
               // Получаем данные анкеты для сотрудника
               const candidateForm = await getCandidateForm(session.employee_id);
-              console.log(`Получена анкета для сессии ${session.id}, сотрудник ${session.employee_id}:`, 
-                candidateForm ? { 
+              console.log(`Получена анкета для сессии ${session.id}, сотрудник ${session.employee_id}:`,
+                candidateForm ? {
                   telegram_tag: candidateForm.telegram_tag,
                   id: candidateForm.id,
-                  employee_id: candidateForm.employee_id 
+                  employee_id: candidateForm.employee_id
                 } : 'Нет анкеты');
-              
+
               // Проверяем наличие telegram_tag и не пустой ли он
               const telegramTag = candidateForm?.telegram_tag ? candidateForm.telegram_tag.trim() : null;
               console.log(`Телеграм для сессии ${session.id}:`, telegramTag || 'Не указан');
-              
+
               // Подсчет количества сообщений
               const messagesCount = session.chats?.reduce(
                 (sum, chat) => sum + (chat.messages?.length || 0),
                 0
               ) || 0;
-              
+
               return {
                 ...session,
                 telegram_tag: telegramTag,
@@ -129,18 +129,18 @@ function Dashboard() {
               };
             })
           );
-          
+
           setRecentTestSessions(sessionsWithExtraData);
           console.log('Данные успешно загружены через API');
         } catch (apiError) {
           console.warn('Ошибка при использовании API, переход к прямым функциям:', apiError);
-          
+
           // Прямой импорт функций из supabase.ts
           const { getEmployees, getRecentTestSessions, supabase } = await import('../lib/supabase');
-          
+
           // Получаем сотрудников
           const employeesData = await getEmployees();
-          
+
           // Получаем все сессии без применения getRecentTestSessions, чтобы обойти группировку
           const { data: allSessionsData, error } = await supabase
             .from('test_sessions')
@@ -157,68 +157,68 @@ function Dashboard() {
             `)
             .order('created_at', { ascending: false })
             .limit(1000);
-            
+
           if (error) {
             console.error('Ошибка при получении всех сессий:', error);
             throw error;
           }
-          
-          console.log('Данные получены напрямую из Supabase:', { 
-            employees: employeesData?.length, 
-            sessions: allSessionsData?.length 
+
+          console.log('Данные получены напрямую из Supabase:', {
+            employees: employeesData?.length,
+            sessions: allSessionsData?.length
           });
-          
+
           if (!employeesData || !allSessionsData) {
             throw new Error('Не удалось получить данные');
           }
-          
+
           // Получаем данные анкет для каждого сотрудника при использовании прямых функций
           const employeesWithTelegram = await Promise.all(
             employeesData.map(async (employee: Employee) => {
               // Получаем данные анкеты для сотрудника
               const candidateForm = await getCandidateForm(employee.id);
-              console.log(`Получена анкета для сотрудника ${employee.first_name} (${employee.id}):`, 
-                candidateForm ? { 
+              console.log(`Получена анкета для сотрудника ${employee.first_name} (${employee.id}):`,
+                candidateForm ? {
                   telegram_tag: candidateForm.telegram_tag,
                   id: candidateForm.id,
-                  employee_id: candidateForm.employee_id 
+                  employee_id: candidateForm.employee_id
                 } : 'Нет анкеты');
-              
+
               // Проверяем наличие telegram_tag и не пустой ли он
               const telegramTag = candidateForm?.telegram_tag ? candidateForm.telegram_tag.trim() : null;
               console.log(`Телеграм для ${employee.first_name}:`, telegramTag || 'Не указан');
-              
+
               return {
                 ...employee,
                 telegram_tag: telegramTag
               };
             })
           );
-          
+
           setEmployees(employeesWithTelegram);
-          
+
           // Обработка всех полученных сессий
           const directSessionsWithExtraData = await Promise.all(
             allSessionsData.map(async (session: TestSession) => {
               // Получаем данные анкеты для сотрудника
               const candidateForm = await getCandidateForm(session.employee_id);
-              console.log(`Получена анкета для сессии ${session.id}, сотрудник ${session.employee_id}:`, 
-                candidateForm ? { 
+              console.log(`Получена анкета для сессии ${session.id}, сотрудник ${session.employee_id}:`,
+                candidateForm ? {
                   telegram_tag: candidateForm.telegram_tag,
                   id: candidateForm.id,
-                  employee_id: candidateForm.employee_id 
+                  employee_id: candidateForm.employee_id
                 } : 'Нет анкеты');
-              
+
               // Проверяем наличие telegram_tag и не пустой ли он
               const telegramTag = candidateForm?.telegram_tag ? candidateForm.telegram_tag.trim() : null;
               console.log(`Телеграм для сессии ${session.id}:`, telegramTag || 'Не указан');
-              
+
               // Подсчет количества сообщений
               const messagesCount = session.chats?.reduce(
                 (sum, chat) => sum + (chat.messages?.length || 0),
                 0
               ) || 0;
-              
+
               return {
                 ...session,
                 telegram_tag: telegramTag,
@@ -226,26 +226,26 @@ function Dashboard() {
               };
             })
           );
-          
+
           setRecentTestSessions(directSessionsWithExtraData);
         }
       } catch (error) {
         console.error('Error loading dashboard data:', error);
-        
+
         // Попробуем снова, если это не последняя попытка
         if (retryCount < 2) {
           console.log(`Повторная попытка загрузки данных (${retryCount + 1}/3)...`);
           setTimeout(() => fetchData(retryCount + 1), 1000 * (retryCount + 1));
           return;
         }
-        
+
         setError('Ошибка загрузки данных. Пожалуйста, попробуйте позже.');
       } finally {
         setLoadingEmployees(false);
         setLoadingTestSessions(false);
       }
     };
-    
+
     fetchData();
   }, []);
 
@@ -272,8 +272,8 @@ function Dashboard() {
   const filteredEmployees = employees
     // Сначала удаляем дубликаты по имени и нормализованному отделу
     .filter((employee, index, self) =>
-      index === self.findIndex((e) => 
-        (e.first_name || '') === (employee.first_name || '') && 
+      index === self.findIndex((e) =>
+        (e.first_name || '') === (employee.first_name || '') &&
         ((e.department || '')?.toLowerCase() === (employee.department || '')?.toLowerCase())
       )
     )
@@ -303,13 +303,13 @@ function Dashboard() {
     try {
       // Получаем результаты тестирования сотрудника через API
       const response = await fetch(`/api/test-results?employeeId=${employeeId}`);
-      
+
       if (!response.ok) {
         throw new Error('Ошибка загрузки результатов тестирования');
       }
-      
+
       const results = await response.json();
-      
+
       // Если есть результаты, выбираем первый для отображения
       if (results && results.length > 0) {
         const sessionId = results[0].test_session_id;
@@ -334,10 +334,10 @@ function Dashboard() {
       const sessionForEmployee = recentTestSessions.find(
         session => session.employee_id === id && session.completed
       );
-      
+
       if (sessionForEmployee) {
         console.log(`Переход к результатам сессии: ${sessionForEmployee.id}`);
-        
+
         // Прямое изменение URL вместо использования React Router
         window.location.href = `/admin/session/${sessionForEmployee.id}`;
       } else {
@@ -376,14 +376,14 @@ function Dashboard() {
   return (
     <div className="min-h-screen bg-[#1a1a1a] text-gray-100 p-6">
       {/* Header */}
-      <div className="flex justify-between items-center mb-8">
-        <div>
+      <div className="flex justify-between items-center mb-10">
+        <div className="mr-3">
           <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-purple-500">
             Панель управления
           </h1>
           <p className="text-gray-400 mt-2">Обзор тренингов и прогресса сотрудников</p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex gap-3 ml-auto">
           <button
             onClick={handleNewEmployeeClick}
             className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-pink-500 to-purple-500 rounded-lg text-white font-semibold hover:opacity-90 transition-opacity"
@@ -413,80 +413,81 @@ function Dashboard() {
             <p>Пока нет данных о тестированиях</p>
           </div>
         ) : (
-          <div className="overflow-y-auto" style={{ maxHeight: '480px' }}>
-            <table className="w-full">
-              <thead className="sticky top-0 bg-[#2d2d2d] z-10">
-                <tr className="text-left text-gray-400 border-b border-[#3d3d3d]">
-                  <th className="pb-3 pl-4">Пользователь</th>
-                  <th className="pb-3">Дата/Время</th>
-                  <th className="pb-3">Сообщения</th>
-                  <th className="pb-3">Статус</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#3d3d3d]">
-                {recentTestSessions.map((session) => {
-                  const { date, time } = formatDateTime(session.created_at);
-                  // Используем первую букву имени сотрудника как инициалы
-                  const initials = session.employee && session.employee.first_name && session.employee.first_name[0] ? 
-                    session.employee.first_name[0].toUpperCase() :
-                    '?';
-                  
-                  return (
-                    <tr 
-                      key={session.id} 
-                      className="hover:bg-[#3d3d3d]/30 transition-colors cursor-pointer"
-                      onClick={(e) => {
-                        e.preventDefault(); // Предотвращаем любое стандартное поведение
-                        console.log(`Переход к результатам сессии из таблицы: ${session.id}`);
-                        
-                        // Прямое изменение URL вместо использования React Router
-                        window.location.href = `/admin/session/${session.id}`;
-                      }}
-                    >
-                      <td className="py-4 pl-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-gradient-to-r from-pink-500 to-purple-500 flex items-center justify-center">
-                            {initials}
-                          </div>
-                          <div>
-                            <div className="font-medium">
-                              {session.employee ? 
-                                `${session.employee.first_name}` :
-                                'Неизвестный пользователь'}
+          <div className="overflow-x-auto">
+            <div className="overflow-y-auto" style={{ maxHeight: '480px' }}>
+              <table className="w-full min-w-[600px] md:min-w-full">
+                <thead className="sticky top-0 bg-[#2d2d2d] z-10">
+                  <tr className="text-left text-gray-400 border-b border-[#3d3d3d]">
+                    <th className="pb-3 pl-4 w-2/5 md:w-auto">Пользователь</th>
+                    <th className="pb-3 w-1/5 md:w-auto">Дата/Время</th>
+                    <th className="pb-3 w-1/5 md:w-auto">Сообщения</th>
+                    <th className="pb-3 w-1/5 md:w-auto">Статус</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#3d3d3d]">
+                  {recentTestSessions.map((session) => {
+                    const { date, time } = formatDateTime(session.created_at);
+                    // Используем первую букву имени сотрудника как инициалы
+                    const initials = session.employee && session.employee.first_name && session.employee.first_name[0] ?
+                      session.employee.first_name[0].toUpperCase() :
+                      '?';
+
+                    return (
+                      <tr
+                        key={session.id}
+                        className="hover:bg-[#3d3d3d]/30 transition-colors cursor-pointer"
+                        onClick={(e) => {
+                          e.preventDefault(); // Предотвращаем любое стандартное поведение
+                          console.log(`Переход к результатам сессии из таблицы: ${session.id}`);
+
+                          // Прямое изменение URL вместо использования React Router
+                          window.location.href = `/admin/session/${session.id}`;
+                        }}
+                      >
+                        <td className="py-4 pl-4">
+                          <div className="flex items-center gap-2 md:gap-3">
+                            <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-gradient-to-r from-pink-500 to-purple-500 flex items-center justify-center text-xs md:text-base">
+                              {initials}
                             </div>
-                            <div className="text-sm text-gray-400">
-                              {session.telegram_tag ? (
-                                <span className="text-blue-400 font-medium">{session.telegram_tag}</span>
-                              ) : (
-                                'Участник тестирования'
-                              )}
+                            <div className="min-w-0">
+                              <div className="font-medium truncate">
+                                {session.employee ?
+                                  `${session.employee.first_name}` :
+                                  'Неизвестный пользователь'}
+                              </div>
+                              <div className="text-xs md:text-sm text-gray-400 truncate">
+                                {session.telegram_tag ? (
+                                  <span className="text-blue-400 font-medium">{session.telegram_tag}</span>
+                                ) : (
+                                  'Участник тестирования'
+                                )}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      </td>
-                      <td className="py-4">
-                        <div>{date}</div>
-                        <div className="text-sm text-gray-400">{time}</div>
-                      </td>
-                      <td className="py-4">
-                        <div className="font-medium">{session.messages_count}</div>
-                      </td>
-                      <td className="py-4">
-                        <span
-                          className={`px-2 py-1 rounded-full text-xs ${
-                            session.completed
+                        </td>
+                        <td className="py-4">
+                          <div className="text-sm md:text-base">{date}</div>
+                          <div className="text-xs md:text-sm text-gray-400">{time}</div>
+                        </td>
+                        <td className="py-4">
+                          <div className="font-medium">{session.messages_count}</div>
+                        </td>
+                        <td className="py-4">
+                          <span
+                            className={`px-2 py-1 rounded-full text-xs ${session.completed
                               ? 'bg-green-500/20 text-green-400'
                               : 'bg-blue-500/20 text-blue-400'
-                          }`}
-                        >
-                          {session.completed ? 'Завершено' : 'Активно'}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                              }`}
+                          >
+                            {session.completed ? 'Завершено' : 'Активно'}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </div>
@@ -528,10 +529,10 @@ function Dashboard() {
           </div>
 
           {/* Filters */}
-          <div className="grid grid-cols-3 gap-4 mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
             <div className="relative">
               <select
-                className="w-full bg-[#1a1a1a] border border-[#3d3d3d] rounded-lg px-4 py-2 appearance-none cursor-pointer text-gray-300"
+                className="w-full bg-[#1a1a1a] border border-[#3d3d3d] rounded-lg px-2 sm:px-4 py-2 appearance-none cursor-pointer text-gray-300 text-sm pr-8"
                 value={filters.department}
                 onChange={(e) => setFilters({ ...filters, department: e.target.value })}
               >
@@ -541,12 +542,12 @@ function Dashboard() {
                   </option>
                 ))}
               </select>
-              <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none" />
+              <ChevronDown className="w-4 h-4 text-gray-400 absolute right-2 top-1/2 transform -translate-y-1/2 pointer-events-none" />
             </div>
 
             <div className="relative">
               <select
-                className="w-full bg-[#1a1a1a] border border-[#3d3d3d] rounded-lg px-4 py-2 appearance-none cursor-pointer text-gray-300"
+                className="w-full bg-[#1a1a1a] border border-[#3d3d3d] rounded-lg px-2 sm:px-4 py-2 appearance-none cursor-pointer text-gray-300 text-sm pr-8"
                 value={filters.level}
                 onChange={(e) => setFilters({ ...filters, level: e.target.value })}
               >
@@ -556,12 +557,12 @@ function Dashboard() {
                   </option>
                 ))}
               </select>
-              <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none" />
+              <ChevronDown className="w-4 h-4 text-gray-400 absolute right-2 top-1/2 transform -translate-y-1/2 pointer-events-none" />
             </div>
 
             <div className="relative">
               <select
-                className="w-full bg-[#1a1a1a] border border-[#3d3d3d] rounded-lg px-4 py-2 appearance-none cursor-pointer text-gray-300"
+                className="w-full bg-[#1a1a1a] border border-[#3d3d3d] rounded-lg px-2 sm:px-4 py-2 appearance-none cursor-pointer text-gray-300 text-sm pr-8"
                 value={filters.date}
                 onChange={(e) => setFilters({ ...filters, date: e.target.value })}
               >
@@ -571,7 +572,7 @@ function Dashboard() {
                   </option>
                 ))}
               </select>
-              <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none" />
+              <ChevronDown className="w-4 h-4 text-gray-400 absolute right-2 top-1/2 transform -translate-y-1/2 pointer-events-none" />
             </div>
           </div>
 
